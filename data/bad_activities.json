@@ -1,0 +1,7 @@
+{
+  "_doc": "Activity IDs to skip in fitness/fatigue scoring. Typically sensor glitches (impossible power, HR spikes, etc.).",
+  "skip": [
+    {"activity_id": 5116234509, "date": "2020-06-20", "reason": "NP=1265W, TSS=4144 — power meter glitch"},
+    {"activity_id": 5116529874, "date": "2020-06-20", "reason": "NP=2139W, TSS=1265 — power meter glitch"}
+  ]
+}

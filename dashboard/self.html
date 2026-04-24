@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Understanding Myself — Sports Analytics</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="activities.js"></script>
+<script src="daily_stats.js"></script>
+<script src="fitness.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --border:   #2a2d3a;
+    --accent:   #4f8ef7;
+    --accent2:  #f74f8e;
+    --green:    #4fbd87;
+    --yellow:   #f7c94f;
+    --orange:   #f79b4f;
+    --text:     #e2e4ed;
+    --muted:    #6b7080;
+    --radius:   10px;
+  }
+
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  header { padding: 18px 28px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; }
+  header h1 { font-size: 1.2rem; font-weight: 700; letter-spacing: -.3px; }
+  header span { color: var(--muted); font-size: .85rem; }
+  header nav { margin-left: auto; display: flex; gap: 16px; }
+  header nav a { color: var(--muted); font-size: .85rem; text-decoration: none; padding: 6px 10px; border-radius: 6px; }
+  header nav a:hover { color: var(--text); background: var(--surface); }
+  header nav a.active { color: var(--accent); }
+
+  main { padding: 20px 28px; display: flex; flex-direction: column; gap: 18px; max-width: 1400px; margin: 0 auto; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 16px 20px;
+  }
+  .card .label { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .card .value { font-size: 1.6rem; font-weight: 700; line-height: 1.1; }
+  .card .sub   { color: var(--muted); font-size: .78rem; margin-top: 6px; }
+  .card.accent .value { color: var(--accent); }
+  .card.green .value  { color: var(--green); }
+  .card.orange .value { color: var(--orange); }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 18px 22px;
+  }
+  .panel h2 { font-size: .85rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 14px; }
+  .panel h3 { font-size: .95rem; margin-bottom: 10px; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  .chart-container { position: relative; height: 260px; }
+  .chart-container.small { height: 200px; }
+
+  .profile-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 16px; }
+  .profile-form label { display: flex; flex-direction: column; gap: 4px; font-size: .78rem; color: var(--muted); }
+  .profile-form input, .profile-form select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    border-radius: 6px; padding: 7px 10px; font-size: .95rem;
+  }
+  .profile-form button {
+    grid-column: 1 / -1;
+    background: var(--accent); color: #fff; border: 0; border-radius: 6px;
+    padding: 9px 14px; font-weight: 600; cursor: pointer; margin-top: 4px;
+  }
+
+  ul.plan { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  ul.plan li { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; }
+  ul.plan li strong { color: var(--accent); }
+  ul.plan li .sub { color: var(--muted); font-size: .82rem; margin-top: 4px; }
+
+  .progress-bar {
+    width: 100%; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin-top: 10px;
+  }
+  .progress-bar > div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--green)); transition: width .4s; }
+
+  .tdee-breakdown { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .tdee-breakdown .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--border); font-size: .88rem; }
+  .tdee-breakdown .row:last-child { border-bottom: 0; }
+  .tdee-breakdown .row .val { font-weight: 600; }
+
+  .muted { color: var(--muted); font-size: .85rem; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Understanding Myself</h1>
+  <span id="data-span"></span>
+  <nav>
+    <a href="index.html">Activities</a>
+    <a href="self.html" class="active">Understanding Myself</a>
+  </nav>
+</header>
+
+<main>
+
+  <section class="cards" id="topCards"></section>
+
+  <section class="two-col">
+    <div class="panel">
+      <h2>Profile</h2>
+      <form class="profile-form" id="profileForm">
+        <label>Name <input type="text" id="p_name"></label>
+        <label>Sex <select id="p_sex"><option value="male">male</option><option value="female">female</option></select></label>
+        <label>Height (cm) <input type="number" id="p_height" min="100" max="230"></label>
+        <label>Birthdate <input type="date" id="p_birth"></label>
+        <label>Current weight (kg) <input type="number" id="p_weight" min="30" max="250" step="0.1"></label>
+        <label>Target weight (kg) <input type="number" id="p_target" min="30" max="250" step="0.1"></label>
+        <label>Daily deficit (kcal) <input type="number" id="p_deficit" min="0" max="1200" step="50"></label>
+        <label>Altitude (m) <input type="number" id="p_alt" min="0" max="5000"></label>
+        <button type="submit">Save</button>
+      </form>
+    </div>
+
+    <div class="panel">
+      <h2>Energy balance</h2>
+      <div class="tdee-breakdown" id="tdeeBreakdown"></div>
+      <h3 style="margin-top:16px;">Weight loss target</h3>
+      <div id="weightTarget"></div>
+      <div class="progress-bar"><div id="progressBarFill" style="width:0%"></div></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:8px;">
+      <h2 style="margin:0;">Fitness &amp; Fatigue (PMC)</h2>
+      <div class="fitness-controls" style="display:flex;gap:6px;align-items:center;">
+        <span id="fitnessStats" style="color:var(--muted);font-size:.82rem;"></span>
+        <div class="toggle-group" id="fitnessRange" style="display:flex;gap:2px;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px;">
+          <button class="fit-range-btn" data-days="90">90d</button>
+          <button class="fit-range-btn" data-days="180">6m</button>
+          <button class="fit-range-btn" data-days="365">1y</button>
+          <button class="fit-range-btn active" data-days="0">All</button>
+        </div>
+      </div>
+    </div>
+    <div class="chart-container" style="height:320px;"><canvas id="fitnessChart"></canvas></div>
+    <div class="muted" style="margin-top:10px;font-size:.8rem;">
+      CTL = chronic training load (42-day fitness). ATL = acute (7-day fatigue). TSB = form (yesterday's CTL − ATL).
+      Cycling with power uses precomputed TSS; other activities use hrTSS (TRIMP normalized to 100/hour at LTHR).
+      Thresholds derived from your data: <span id="fitnessThr"></span>.
+    </div>
+  </section>
+
+  <style>
+    .fit-range-btn { background: none; border: none; color: var(--muted); font-size: .7rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; padding: 3px 8px; border-radius: 4px; cursor: pointer; }
+    .fit-range-btn.active { background: var(--accent); color: #fff; }
+  </style>
+
+  <section class="panel">
+    <h2>Daily calories burned (last 180 days)</h2>
+    <div class="chart-container"><canvas id="kcalChart"></canvas></div>
+  </section>
+
+  <section class="two-col">
+    <div class="panel">
+      <h2>Weekly training volume (hours by type, last 12 weeks)</h2>
+      <div class="chart-container"><canvas id="volumeChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <h2>Resting HR trend</h2>
+      <div class="chart-container"><canvas id="rhrChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Training plan (weight-loss oriented)</h2>
+    <ul class="plan" id="planList"></ul>
+    <div class="muted" style="margin-top:14px;">
+      Rough heuristic, not medical advice. Altitude (Llívia, 1200 m) slightly increases energy cost at same HR — factored qualitatively.
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ── Profile ───────────────────────────────────────────────────────────────
+const DEFAULT_PROFILE = {
+  name: "Pau",
+  sex: "male",
+  height_cm: 195,
+  birthdate: "1992-10-15",
+  current_weight_kg: 100,
+  target_weight_kg: 90,
+  deficit_kcal_per_day: 500,
+  altitude_m: 1200,
+};
+
+function loadProfile() {
+  try {
+    const saved = JSON.parse(localStorage.getItem('sports_profile') || 'null');
+    return { ...DEFAULT_PROFILE, ...(saved || {}) };
+  } catch { return DEFAULT_PROFILE; }
+}
+function saveProfile(p) { localStorage.setItem('sports_profile', JSON.stringify(p)); }
+
+function age(birthdate) {
+  const b = new Date(birthdate);
+  const today = new Date();
+  let a = today.getFullYear() - b.getFullYear();
+  if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) a--;
+  return a;
+}
+
+// Mifflin-St Jeor
+function bmr(p) {
+  const a = age(p.birthdate);
+  const base = 10 * p.current_weight_kg + 6.25 * p.height_cm - 5 * a;
+  return Math.round(base + (p.sex === 'male' ? 5 : -161));
+}
+function bmi(p) { return p.current_weight_kg / Math.pow(p.height_cm / 100, 2); }
+function targetBmi(p) { return p.target_weight_kg / Math.pow(p.height_cm / 100, 2); }
+
+// ── Data ─────────────────────────────────────────────────────────────────
+const STATS = (typeof window !== 'undefined' && window.DAILY_STATS) ? window.DAILY_STATS : [];
+const ACTS  = (typeof ACTIVITIES !== 'undefined') ? ACTIVITIES : [];
+
+function mean(arr) { return arr.length ? arr.reduce((a,b)=>a+b,0)/arr.length : 0; }
+function round(x, d=0) { const k=Math.pow(10,d); return Math.round(x*k)/k; }
+
+// Filter stats to last N days
+function lastNDays(rows, n) {
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - n);
+  return rows.filter(r => new Date(r.calendarDate) >= cutoff);
+}
+
+// TDEE: avg of totalKilocalories over last 30 days (drop days with missing data)
+function computeTDEE() {
+  const recent = lastNDays(STATS, 30).filter(r => r.totalKilocalories != null);
+  return recent.length ? round(mean(recent.map(r => r.totalKilocalories))) : null;
+}
+function computeBMRavg() {
+  const recent = lastNDays(STATS, 30).filter(r => r.bmrKilocalories != null);
+  return recent.length ? round(mean(recent.map(r => r.bmrKilocalories))) : null;
+}
+function computeActiveAvg() {
+  const recent = lastNDays(STATS, 30).filter(r => r.activeKilocalories != null);
+  return recent.length ? round(mean(recent.map(r => r.activeKilocalories))) : null;
+}
+function computeAvgRHR() {
+  const recent = lastNDays(STATS, 30).filter(r => r.restingHeartRate != null && r.restingHeartRate > 0);
+  return recent.length ? round(mean(recent.map(r => r.restingHeartRate))) : null;
+}
+
+// ── Render ───────────────────────────────────────────────────────────────
+function renderCards(p) {
+  const tdee = computeTDEE();
+  const rhr = computeAvgRHR();
+  const weightToLose = p.current_weight_kg - p.target_weight_kg;
+  const eatTarget = tdee != null ? tdee - p.deficit_kcal_per_day : null;
+
+  document.getElementById('topCards').innerHTML = `
+    <div class="card"><div class="label">BMR (Mifflin-St Jeor)</div><div class="value">${bmr(p)}</div><div class="sub">kcal/day</div></div>
+    <div class="card accent"><div class="label">TDEE (30-day avg)</div><div class="value">${tdee ?? '—'}</div><div class="sub">kcal/day burned</div></div>
+    <div class="card green"><div class="label">Eat target</div><div class="value">${eatTarget ?? '—'}</div><div class="sub">kcal/day for ${p.deficit_kcal_per_day}-kcal deficit</div></div>
+    <div class="card"><div class="label">BMI</div><div class="value">${round(bmi(p),1)}</div><div class="sub">→ ${round(targetBmi(p),1)} at target</div></div>
+    <div class="card orange"><div class="label">To lose</div><div class="value">${round(weightToLose,1)} kg</div><div class="sub">~${round(weightToLose/0.5, 0)} weeks @ 0.5 kg/wk</div></div>
+    <div class="card"><div class="label">Avg resting HR</div><div class="value">${rhr ?? '—'}</div><div class="sub">bpm (30 d)</div></div>
+  `;
+}
+
+function renderTDEEbreakdown(p) {
+  const tdee = computeTDEE();
+  const bmrG = computeBMRavg();
+  const active = computeActiveAvg();
+  const eat = tdee != null ? tdee - p.deficit_kcal_per_day : null;
+  const rows = [
+    ['BMR (Mifflin-St Jeor)',                 bmr(p),       'kcal'],
+    ['BMR (Garmin daily avg)',                bmrG ?? '—',  'kcal'],
+    ['Active calories (30-day avg)',          active ?? '—','kcal'],
+    ['Total daily burn (TDEE, 30-day avg)',   tdee ?? '—',  'kcal'],
+    [`Target deficit`,                        `−${p.deficit_kcal_per_day}`, 'kcal'],
+    [`Eat per day (target)`,                  eat ?? '—',   'kcal'],
+  ];
+  document.getElementById('tdeeBreakdown').innerHTML =
+    rows.map(([k,v,u]) => `<div class="row"><span>${k}</span><span class="val">${v} ${u}</span></div>`).join('');
+}
+
+function renderWeightTarget(p) {
+  const loss = p.current_weight_kg - p.target_weight_kg;
+  const wkAt05 = loss > 0 ? round(loss / 0.5, 0) : 0;
+  const wkAtDeficit = loss > 0 ? round(loss * 7700 / (p.deficit_kcal_per_day * 7), 0) : 0;
+  const progress = loss <= 0 ? 100 :
+    Math.max(0, Math.min(100, 100 * (1 - loss / (p.current_weight_kg - p.target_weight_kg + 0.0001))));
+  document.getElementById('weightTarget').innerHTML = `
+    <div class="muted">Current ${p.current_weight_kg} kg → target ${p.target_weight_kg} kg</div>
+    <div class="muted">At ${p.deficit_kcal_per_day} kcal/day deficit ≈ ${wkAtDeficit} weeks</div>
+    <div class="muted">At a conservative 0.5 kg/week ≈ ${wkAt05} weeks</div>
+  `;
+  document.getElementById('progressBarFill').style.width = progress + '%';
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────
+Chart.defaults.color = '#6b7080';
+Chart.defaults.borderColor = '#2a2d3a';
+Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+
+let kcalChart, volumeChart, rhrChart;
+
+function renderKcalChart() {
+  const rows = lastNDays(STATS, 180).filter(r => r.totalKilocalories != null);
+  const data = rows.map(r => ({ x: r.calendarDate, y: r.totalKilocalories }));
+  const bmrData = rows.map(r => ({ x: r.calendarDate, y: r.bmrKilocalories }));
+  // 7-day rolling avg
+  const rolling = data.map((d, i) => {
+    const win = data.slice(Math.max(0, i-6), i+1);
+    return { x: d.x, y: Math.round(win.reduce((a,b)=>a+b.y,0)/win.length) };
+  });
+
+  if (kcalChart) kcalChart.destroy();
+  const ctx = document.getElementById('kcalChart').getContext('2d');
+  kcalChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'Daily total', data, borderColor: '#4f8ef7', backgroundColor: '#4f8ef722',
+          tension: 0.2, pointRadius: 1.5, borderWidth: 1 },
+        { label: '7-day avg (TDEE)', data: rolling, borderColor: '#4fbd87', backgroundColor: 'transparent',
+          tension: 0.3, pointRadius: 0, borderWidth: 2 },
+        { label: 'BMR', data: bmrData, borderColor: '#6b7080', backgroundColor: 'transparent',
+          borderDash: [4,4], tension: 0.2, pointRadius: 0, borderWidth: 1 },
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { type: 'time', time: { unit: 'week' }, grid: { color: '#2a2d3a55' } },
+        y: { grid: { color: '#2a2d3a55' }, title: { display: true, text: 'kcal' } },
+      },
+      plugins: { legend: { labels: { color: '#e2e4ed' } } },
+    }
+  });
+}
+
+function renderVolumeChart() {
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 12*7);
+  const byWeekType = {};
+  for (const a of ACTS) {
+    const d = new Date(a.date);
+    if (d < cutoff) continue;
+    const week = weekKey(d);
+    const t = a.type || 'Other';
+    byWeekType[week] ??= {};
+    byWeekType[week][t] = (byWeekType[week][t] || 0) + (a.duration_min / 60);
+  }
+  const weeks = Object.keys(byWeekType).sort();
+  const types = Array.from(new Set(weeks.flatMap(w => Object.keys(byWeekType[w])))).sort();
+  const colors = { Cycling:'#4f8ef7', Running:'#f74f8e', Hiking:'#4fbd87', 'Trail Running':'#f7c94f',
+                   Skiing:'#c9a3f7', Walking:'#7fa8d8', Other:'#6b7080', Paddleboarding:'#f79b4f' };
+
+  const datasets = types.map(t => ({
+    label: t,
+    data: weeks.map(w => round(byWeekType[w][t] || 0, 1)),
+    backgroundColor: colors[t] || '#a0a4b8',
+  }));
+
+  if (volumeChart) volumeChart.destroy();
+  const ctx = document.getElementById('volumeChart').getContext('2d');
+  volumeChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels: weeks, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { stacked: true, grid: { display: false } },
+        y: { stacked: true, grid: { color: '#2a2d3a55' }, title: { display: true, text: 'hours' } },
+      },
+      plugins: { legend: { labels: { color: '#e2e4ed' } } },
+    }
+  });
+}
+
+function weekKey(d) {
+  // ISO week start (Monday)
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - day);
+  return x.toISOString().slice(0,10);
+}
+
+function renderRhrChart() {
+  const rows = lastNDays(STATS, 360).filter(r => r.restingHeartRate != null && r.restingHeartRate > 0);
+  const data = rows.map(r => ({ x: r.calendarDate, y: r.restingHeartRate }));
+  const rolling = data.map((d, i) => {
+    const win = data.slice(Math.max(0, i-6), i+1);
+    return { x: d.x, y: Math.round(win.reduce((a,b)=>a+b.y,0)/win.length) };
+  });
+
+  if (rhrChart) rhrChart.destroy();
+  const ctx = document.getElementById('rhrChart').getContext('2d');
+  rhrChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      datasets: [
+        { label: 'Daily', data, borderColor: '#f74f8e33', backgroundColor: 'transparent',
+          pointRadius: 1, borderWidth: 1 },
+        { label: '7-day avg', data: rolling, borderColor: '#f74f8e', backgroundColor: 'transparent',
+          tension: 0.3, pointRadius: 0, borderWidth: 2 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      scales: {
+        x: { type: 'time', time: { unit: 'month' }, grid: { color: '#2a2d3a55' } },
+        y: { grid: { color: '#2a2d3a55' }, title: { display: true, text: 'bpm' } },
+      },
+      plugins: { legend: { labels: { color: '#e2e4ed' } } },
+    }
+  });
+}
+
+// ── Plan ──────────────────────────────────────────────────────────────────
+function buildPlan(p) {
+  // Weekly hours of cycling and running over last 8 weeks
+  const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 56);
+  const recent = ACTS.filter(a => new Date(a.date) >= cutoff);
+  const hours = {};
+  recent.forEach(a => { hours[a.type] = (hours[a.type] || 0) + (a.duration_min / 60); });
+  const weeks = 8;
+  const cyclingH = (hours['Cycling'] || 0) / weeks;
+  const runningH = (hours['Running'] || 0) / weeks;
+  const hikingH  = (hours['Hiking']  || 0) / weeks;
+  const totalH   = Object.values(hours).reduce((a,b)=>a+b,0) / weeks;
+
+  const plan = [];
+  plan.push({
+    title: 'Zone 2 base (2 × per week)',
+    sub: `Cycling or hiking at HR ~130-140 bpm. Lengthen gradually; current cycling ~${round(cyclingH,1)} h/wk.`
+  });
+  plan.push({
+    title: '1 × interval session (cycling or running)',
+    sub: 'E.g. 4×5 min at HR >160, 3 min easy between. Boosts VO₂/lactate clearance. Skip in the first 2-3 wks of a cut.'
+  });
+  plan.push({
+    title: '1 × long endurance ride/run (weekend)',
+    sub: 'Largest calorie expense of the week; stay mostly zone 2 and fuel carbs if >2 h to protect muscle.'
+  });
+  plan.push({
+    title: '2 × strength sessions (30-40 min)',
+    sub: 'Preserve muscle while cutting. Compound lifts: squat, deadlift, row, press. High priority while in deficit.'
+  });
+  plan.push({
+    title: '1 × full rest day',
+    sub: 'Especially important at altitude with a deficit — recovery is slower.'
+  });
+  plan.push({
+    title: 'Nutrition',
+    sub: `~${round(p.current_weight_kg*1.8,0)}-${round(p.current_weight_kg*2.2,0)} g protein/day (1.8-2.2 g/kg). Eat most carbs around training.`
+  });
+  if (totalH < 5) plan.push({
+    title: 'Volume note',
+    sub: `Avg ${round(totalH,1)} h/wk in last 8 wks — ramp to 7-10 h/wk gradually for faster fat loss without injury.`
+  });
+  document.getElementById('planList').innerHTML = plan.map(
+    p => `<li><strong>${p.title}</strong><div class="sub">${p.sub}</div></li>`
+  ).join('');
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────
+function refresh() {
+  const p = loadProfile();
+  // populate form
+  document.getElementById('p_name').value    = p.name;
+  document.getElementById('p_sex').value     = p.sex;
+  document.getElementById('p_height').value  = p.height_cm;
+  document.getElementById('p_birth').value   = p.birthdate;
+  document.getElementById('p_weight').value  = p.current_weight_kg;
+  document.getElementById('p_target').value  = p.target_weight_kg;
+  document.getElementById('p_deficit').value = p.deficit_kcal_per_day;
+  document.getElementById('p_alt').value     = p.altitude_m;
+
+  document.getElementById('data-span').textContent =
+    `${STATS.length} days of wellness data · ${ACTS.length} activities`;
+
+  renderCards(p);
+  renderTDEEbreakdown(p);
+  renderWeightTarget(p);
+  renderKcalChart();
+  renderVolumeChart();
+  renderRhrChart();
+  buildPlan(p);
+}
+
+document.getElementById('profileForm').addEventListener('submit', e => {
+  e.preventDefault();
+  const p = {
+    name: document.getElementById('p_name').value,
+    sex:  document.getElementById('p_sex').value,
+    height_cm: +document.getElementById('p_height').value,
+    birthdate: document.getElementById('p_birth').value,
+    current_weight_kg: +document.getElementById('p_weight').value,
+    target_weight_kg:  +document.getElementById('p_target').value,
+    deficit_kcal_per_day: +document.getElementById('p_deficit').value,
+    altitude_m: +document.getElementById('p_alt').value,
+  };
+  saveProfile(p);
+  refresh();
+});
+
+refresh();
+
+// ── Fitness & Fatigue (PMC) ───────────────────────────────────────────────
+let fitnessChart;
+function renderFitnessChart(days = 0) {
+  const data = window.fitnessData;
+  if (!data || !data.daily || !data.daily.length) return;
+  let rows = data.daily;
+  if (days > 0) {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    rows = rows.filter(r => new Date(r.date) >= cutoff);
+  }
+  const labels = rows.map(r => r.date);
+  const tss = rows.map(r => r.tss);
+  const ctl = rows.map(r => r.ctl);
+  const atl = rows.map(r => r.atl);
+  const tsb = rows.map(r => r.tsb);
+
+  const actsByDate = new Map();
+  for (const a of data.activities) {
+    if (!actsByDate.has(a.date)) actsByDate.set(a.date, []);
+    actsByDate.get(a.date).push(a);
+  }
+
+  if (fitnessChart) fitnessChart.destroy();
+  const ctx = document.getElementById('fitnessChart').getContext('2d');
+  fitnessChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar', label: 'Daily load (TSS)', data: tss,
+          backgroundColor: 'rgba(107,112,128,0.35)', borderWidth: 0,
+          yAxisID: 'y1', order: 4 },
+        { type: 'line', label: 'CTL — Fitness (42d)', data: ctl,
+          borderColor: '#4f8ef7', backgroundColor: 'rgba(79,142,247,0.15)',
+          borderWidth: 2.2, fill: true, pointRadius: 0, tension: 0.25,
+          yAxisID: 'y', order: 1 },
+        { type: 'line', label: 'ATL — Fatigue (7d)', data: atl,
+          borderColor: '#f74f8e', borderWidth: 1.8, fill: false,
+          pointRadius: 0, tension: 0.25, yAxisID: 'y', order: 2 },
+        { type: 'line', label: 'TSB — Form', data: tsb,
+          borderColor: '#4fbd87', borderWidth: 1.6, borderDash: [5, 4],
+          fill: false, pointRadius: 0, tension: 0, yAxisID: 'y', order: 3 },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { type: 'time', time: { unit: 'month' },
+             grid: { color: 'rgba(255,255,255,0.04)' },
+             ticks: { color: '#6b7080', maxTicksLimit: 12 } },
+        y: { position: 'left', grid: { color: 'rgba(255,255,255,0.05)' },
+             ticks: { color: '#6b7080' },
+             title: { display: true, text: 'CTL / ATL / TSB', color: '#6b7080' } },
+        y1: { position: 'right', grid: { display: false },
+              ticks: { color: '#6b7080' }, beginAtZero: true,
+              title: { display: true, text: 'Daily TSS', color: '#6b7080' } },
+      },
+      plugins: {
+        legend: { labels: { color: '#e2e4ed', boxWidth: 12, font: { size: 11 } } },
+        tooltip: {
+          callbacks: {
+            afterBody: (items) => {
+              if (!items.length) return '';
+              const d = items[0].label.slice(0, 10);
+              const acts = actsByDate.get(d) || [];
+              if (!acts.length) return '';
+              return ['', ...acts.map(a =>
+                `• ${a.name}  [${a.method}]  ${a.duration_min.toFixed(0)}min  load ${a.load.toFixed(0)}`
+              )];
+            },
+          },
+        },
+      },
+      onClick: (evt) => {
+        const items = fitnessChart.getElementsAtEventForMode(
+          evt, 'index', { intersect: false }, true);
+        if (!items.length) return;
+        const d = fitnessChart.data.labels[items[0].index];
+        const acts = actsByDate.get(d) || [];
+        if (acts.length && acts[0].activity_id) {
+          window.open(`https://connect.garmin.com/modern/activity/${acts[0].activity_id}`, '_blank');
+        }
+      },
+    },
+  });
+}
+
+function renderFitnessSummary() {
+  const data = window.fitnessData;
+  if (!data || !data.daily || !data.daily.length) return;
+  const last = data.daily[data.daily.length - 1];
+  const stats = document.getElementById('fitnessStats');
+  if (stats) {
+    const sign = last.tsb >= 0 ? '+' : '';
+    stats.innerHTML =
+      `CTL <strong style="color:#4f8ef7">${last.ctl.toFixed(1)}</strong>  ` +
+      `ATL <strong style="color:#f74f8e">${last.atl.toFixed(1)}</strong>  ` +
+      `TSB <strong style="color:#4fbd87">${sign}${last.tsb.toFixed(1)}</strong>`;
+  }
+  const thrEl = document.getElementById('fitnessThr');
+  if (thrEl && data.thresholds) {
+    const t = data.thresholds;
+    thrEl.textContent = `HRmax ${t.hr_max}, resting ${t.hr_rest}, LTHR ${t.lthr}`;
+  }
+}
+
+if (window.fitnessData) {
+  renderFitnessSummary();
+  renderFitnessChart(0);
+  document.querySelectorAll('#fitnessRange .fit-range-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#fitnessRange .fit-range-btn')
+        .forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderFitnessChart(parseInt(btn.dataset.days, 10));
+    });
+  });
+}
+</script>
+
+</body>
+</html>
