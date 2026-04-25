@@ -138,8 +138,51 @@
 
   /* ── Responsive ── */
   @media (max-width: 900px) {
-    main { grid-template-columns: 1fr; }
-    .charts { grid-template-columns: 1fr; }
+    main { grid-template-columns: 1fr; padding: 14px; gap: 14px; }
+    .charts { grid-template-columns: 1fr; gap: 14px; }
+    header { padding: 14px 16px; gap: 10px; flex-wrap: wrap; }
+    header h1 { font-size: 1.05rem; }
+    header span { font-size: .75rem; flex-basis: 100%; order: 3; }
+    header nav { margin-left: 0 !important; order: 2; }
+    header nav a { padding: 5px 10px !important; font-size: .78rem !important; }
+    .cards { gap: 10px; }
+    .card { padding: 14px 16px; min-width: 140px; }
+    .card .value { font-size: 1.4rem; }
+    .table-toolbar { padding: 10px 12px; gap: 8px; }
+    .table-toolbar input, .table-toolbar select { font-size: .78rem; padding: 5px 8px; }
+    tbody td, thead th { padding: 7px 8px; font-size: .76rem; }
+    .map-stats { grid-template-columns: repeat(2, 1fr); }
+    .power-profile-strip { grid-template-columns: repeat(3, 1fr) !important; }
+    .map-stat { padding: 8px 10px; }
+    .map-stat .s-value { font-size: .9rem; }
+  }
+  @media (max-width: 600px) {
+    /* Cycling chart section: tighten padding and shrink canvas */
+    section { padding: 14px !important; }
+    section > div { padding: 14px !important; }
+    section #chart-cycling-trend { /* canvas inside fixed-height div */ }
+    section [style*="height: 520px"] { height: 340px !important; }
+    /* Range label wraps to its own row */
+    #cy-range-wrap { flex-direction: column; align-items: stretch !important; }
+    #cy-range-label { min-width: 0 !important; }
+    #cy-range-buttons { justify-content: flex-start; }
+    .cy-range-btn { padding: 5px 8px; font-size: .68rem; }
+    /* Hide less-essential table columns on phone */
+    #activity-table th[data-col="pace_min_km"],
+    #activity-table th[data-col="avg_hr"],
+    #activity-table th[data-col="avg_power"],
+    #activity-table th[data-col="normalized_power"],
+    #activity-table tbody td.col-pace,
+    #activity-table tbody td.col-hr,
+    #activity-table tbody td.col-power,
+    #activity-table tbody td.col-np { display: none; }
+    /* Distance chart controls: month selectors compact */
+    .chart-header { flex-wrap: wrap; gap: 6px; }
+    .chart-controls { flex-wrap: wrap; gap: 4px; }
+    .chart-controls select { font-size: .68rem; padding: 2px 4px; }
+    .toggle-btn { padding: 3px 6px; font-size: .65rem; }
+    /* Map: ensure visible without dominating viewport */
+    #map { min-height: 240px; }
   }
 </style>
 </head>
@@ -416,11 +459,11 @@ function renderTable() {
       <td><span class="badge ${badgeClass(a.type)}">${a.type}</span></td>
       <td>${a.distance_km != null ? a.distance_km.toFixed(1) : '—'}</td>
       <td>${fmt.dur(a.duration_min)}</td>
-      <td>${fmt.pace(a.pace_min_km)}</td>
-      <td>${a.avg_hr != null ? a.avg_hr : '—'}</td>
+      <td class="col-pace">${fmt.pace(a.pace_min_km)}</td>
+      <td class="col-hr">${a.avg_hr != null ? a.avg_hr : '—'}</td>
       <td>${a.elevation_gain != null ? a.elevation_gain + ' m' : '—'}</td>
-      <td>${a.avg_power != null ? a.avg_power + ' W' : '—'}</td>
-      <td>${a.normalized_power != null ? a.normalized_power + ' W' : '—'}</td>
+      <td class="col-power">${a.avg_power != null ? a.avg_power + ' W' : '—'}</td>
+      <td class="col-np">${a.normalized_power != null ? a.normalized_power + ' W' : '—'}</td>
     </tr>`).join('');
 
   tbody.querySelectorAll('tr').forEach(tr => {
