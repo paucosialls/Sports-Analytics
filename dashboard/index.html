@@ -163,22 +163,25 @@
       <h3 style="font-size: .8rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em;">Cycling — Avg power &amp; HR over time</h3>
       <span id="cycling-stats" style="color:var(--muted); font-size:.72rem;"></span>
     </div>
-    <div id="cy-range-wrap" style="display:flex; align-items:center; gap:12px; padding:4px 0 12px; font-size:.72rem; color:var(--muted);">
+    <div id="cy-range-wrap" style="display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding:4px 0 12px; font-size:.72rem; color:var(--muted);">
       <span id="cy-range-label" style="min-width:170px; font-variant-numeric: tabular-nums; color:var(--text);"></span>
-      <div style="flex:1; position:relative; height:28px;">
-        <input id="cy-range-from" type="range" min="0" max="0" value="0" step="1" style="position:absolute; width:100%; top:10px; -webkit-appearance:none; background:transparent; pointer-events:none;">
-        <input id="cy-range-to"   type="range" min="0" max="0" value="0" step="1" style="position:absolute; width:100%; top:10px; -webkit-appearance:none; background:transparent; pointer-events:none;">
-        <div style="position:absolute; top:17px; left:0; right:0; height:4px; background:var(--border); border-radius:2px;"></div>
-        <div id="cy-range-fill" style="position:absolute; top:17px; height:4px; background:var(--accent); border-radius:2px;"></div>
+      <div id="cy-range-buttons" style="display:flex; flex-wrap:wrap; gap:4px;">
+        <button class="cy-range-btn active" data-days="0">Full</button>
+        <button class="cy-range-btn" data-days="1460">4y</button>
+        <button class="cy-range-btn" data-days="1095">3y</button>
+        <button class="cy-range-btn" data-days="730">2y</button>
+        <button class="cy-range-btn" data-days="365">1y</button>
+        <button class="cy-range-btn" data-days="180">6m</button>
+        <button class="cy-range-btn" data-days="90">3m</button>
+        <button class="cy-range-btn" data-days="30">1m</button>
+        <button class="cy-range-btn" data-days="14">14d</button>
+        <button class="cy-range-btn" data-days="7">7d</button>
       </div>
-      <button id="cy-range-reset" style="background:var(--bg); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:.7rem; cursor:pointer;">Tot</button>
     </div>
     <style>
-      #cy-range-wrap input[type=range] { pointer-events:none; }
-      #cy-range-wrap input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; pointer-events:auto; width:14px; height:14px; border-radius:50%; background:var(--accent); border:2px solid var(--bg); cursor:pointer; box-shadow:0 0 0 1px var(--accent); }
-      #cy-range-wrap input[type=range]::-moz-range-thumb { pointer-events:auto; width:14px; height:14px; border-radius:50%; background:var(--accent); border:2px solid var(--bg); cursor:pointer; }
-      #cy-range-wrap input[type=range]::-webkit-slider-runnable-track { background:transparent; height:4px; }
-      #cy-range-wrap input[type=range]::-moz-range-track { background:transparent; height:4px; }
+      .cy-range-btn { background:var(--bg); color:var(--muted); border:1px solid var(--border); border-radius:6px; padding:4px 10px; font-size:.7rem; font-weight:600; letter-spacing:.04em; cursor:pointer; }
+      .cy-range-btn:hover { color:var(--text); }
+      .cy-range-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
     </style>
     <div style="height: 520px;">
       <canvas id="chart-cycling-trend"></canvas>
@@ -717,77 +720,44 @@ const CYCLING_HMIN = 80,  CYCLING_HMAX = 190;
 const CYCLING_CMIN = 40,  CYCLING_CMAX = 120;
 const CYCLING_MIN_KM = 5;
 
-let _allMonths = null;         // e.g. ['2017-12', ..., '2026-04']
-let _rangeFrom = 0;            // index into _allMonths
-let _rangeTo = 0;
+let _rangeDays = 0;            // 0 = full; otherwise N days back from latest activity
+let _rangeStart = null;        // Date (inclusive)
+let _rangeEnd = null;          // Date (inclusive)
+let _rangeButtonsBound = false;
 
-function initCyclingRangeSlider(source) {
-  if (_allMonths) return;
-  const keySet = new Set();
+function initCyclingRangeButtons(source) {
+  if (!source.length) return;
+  let minDate = source[0].date, maxDate = source[0].date;
   for (const a of source) {
-    keySet.add(a.date.getFullYear() + '-' + String(a.date.getMonth()+1).padStart(2,'0'));
+    if (a.date < minDate) minDate = a.date;
+    if (a.date > maxDate) maxDate = a.date;
   }
-  const keys = Array.from(keySet).sort();
-  if (!keys.length) return;
-  // Fill in gaps so the slider is continuous
-  const [fy, fm] = keys[0].split('-').map(Number);
-  const [ly, lm] = keys[keys.length-1].split('-').map(Number);
-  const months = [];
-  const cur = new Date(fy, fm-1, 1), end = new Date(ly, lm-1, 1);
-  while (cur <= end) {
-    months.push(cur.getFullYear() + '-' + String(cur.getMonth()+1).padStart(2,'0'));
-    cur.setMonth(cur.getMonth()+1);
+  _rangeEnd = maxDate;
+  if (_rangeDays > 0) {
+    _rangeStart = new Date(maxDate); _rangeStart.setDate(_rangeStart.getDate() - _rangeDays);
+    if (_rangeStart < minDate) _rangeStart = minDate;
+  } else {
+    _rangeStart = minDate;
   }
-  _allMonths = months;
-  _rangeFrom = 0;
-  _rangeTo = months.length - 1;
-  const fromEl = document.getElementById('cy-range-from');
-  const toEl   = document.getElementById('cy-range-to');
-  if (!fromEl || !toEl) return;
-  [fromEl, toEl].forEach(el => { el.min = 0; el.max = months.length - 1; });
-  fromEl.value = _rangeFrom;
-  toEl.value = _rangeTo;
+  if (!_rangeButtonsBound) {
+    document.querySelectorAll('#cy-range-buttons .cy-range-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#cy-range-buttons .cy-range-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        _rangeDays = parseInt(btn.dataset.days, 10) || 0;
+        renderCyclingTrend();
+      });
+    });
+    _rangeButtonsBound = true;
+  }
   updateRangeVisual();
-  const onInput = (who) => {
-    let f = parseInt(fromEl.value, 10);
-    let t = parseInt(toEl.value, 10);
-    if (f > t) {
-      if (who === 'from') fromEl.value = t;
-      else toEl.value = f;
-    }
-    _rangeFrom = parseInt(fromEl.value, 10);
-    _rangeTo = parseInt(toEl.value, 10);
-    updateRangeVisual();
-    renderCyclingTrend();
-  };
-  fromEl.addEventListener('input', () => onInput('from'));
-  toEl.addEventListener('input',   () => onInput('to'));
-  const resetBtn = document.getElementById('cy-range-reset');
-  if (resetBtn) resetBtn.onclick = () => {
-    _rangeFrom = 0; _rangeTo = _allMonths.length - 1;
-    fromEl.value = _rangeFrom; toEl.value = _rangeTo;
-    updateRangeVisual();
-    renderCyclingTrend();
-  };
 }
 
 function updateRangeVisual() {
-  if (!_allMonths) return;
   const lbl = document.getElementById('cy-range-label');
-  const fill = document.getElementById('cy-range-fill');
-  const fromKey = _allMonths[_rangeFrom], toKey = _allMonths[_rangeTo];
-  const fmt = (k) => {
-    const [y, m] = k.split('-').map(Number);
-    return new Date(y, m-1, 1).toLocaleDateString('ca-ES', { month:'short', year:'2-digit' });
-  };
-  if (lbl) lbl.textContent = `${fmt(fromKey)} → ${fmt(toKey)}`;
-  if (fill) {
-    const max = _allMonths.length - 1;
-    const l = (_rangeFrom / max) * 100;
-    const r = (_rangeTo / max) * 100;
-    fill.style.left = l + '%';
-    fill.style.width = (r - l) + '%';
-  }
+  if (!lbl || !_rangeStart || !_rangeEnd) return;
+  const fmt = (d) => d.toLocaleDateString('ca-ES', { day:'2-digit', month:'short', year:'2-digit' });
+  lbl.textContent = `${fmt(_rangeStart)} → ${fmt(_rangeEnd)}`;
 }
 
 function renderCyclingTrend() {
@@ -803,17 +773,14 @@ function renderCyclingTrend() {
     const hmin = CYCLING_HMIN, hmax = CYCLING_HMAX;
     const cmin = CYCLING_CMIN, cmax = CYCLING_CMAX;
 
-    // Init the range slider on first render
-    initCyclingRangeSlider(source.filter(a =>
+    // Init the range buttons on first render (and update _rangeStart/_rangeEnd each render)
+    initCyclingRangeButtons(source.filter(a =>
       a.distance_m != null && a.distance_m/1000 >= CYCLING_MIN_KM &&
       a.power != null && a.power >= pmin && a.power <= pmax
     ));
-    const fromKey = _allMonths ? _allMonths[_rangeFrom] : null;
-    const toKey   = _allMonths ? _allMonths[_rangeTo]   : null;
     const inRange = (d) => {
-      if (!fromKey || !toKey) return true;
-      const k = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
-      return k >= fromKey && k <= toKey;
+      if (!_rangeStart || !_rangeEnd) return true;
+      return d >= _rangeStart && d <= _rangeEnd;
     };
 
     // Filter by min distance + range (power/HR/cadence clipping applied below)
