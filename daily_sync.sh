@@ -1,6 +1,7 @@
 #!/bin/bash
-# Daily sync: pull new Garmin activities, rebuild dashboard artifacts.
-# Called by ~/Library/LaunchAgents/com.pau.sports-analytics.daily.plist
+# Daily sync: pull new Garmin activities, rebuild dashboard artifacts,
+# commit fresh data files and push to GitHub.
+# Scheduled via crontab on auntie.
 
 set -u
 cd "$(dirname "$0")"
@@ -31,5 +32,20 @@ run_step fetch_daily_stats   python src/fetch_daily_stats.py
 run_step parse_gpx           python src/parse_gpx.py
 run_step backfill_cadence    python src/backfill_cadence.py
 run_step fitness_fatigue     python src/fitness_fatigue.py
+
+# --- git: commit fresh dashboard data and push to GitHub ---
+echo "--- git_push ---" >> "$LOG"
+{
+  git add dashboard/activities.js dashboard/cadence_activities.js \
+          dashboard/cycling_activities.js dashboard/daily_stats.js \
+          dashboard/fitness.js 2>/dev/null
+  if ! git diff --cached --quiet; then
+    git commit -m "Daily data sync $(date '+%Y-%m-%d')" \
+      && git push
+  else
+    echo "no data changes — skipping commit"
+  fi
+} >> "$LOG" 2>&1 && echo "[ok]  git_push" >> "$LOG" \
+                || echo "[err] git_push" >> "$LOG"
 
 echo "done $(date '+%H:%M:%S')" >> "$LOG"

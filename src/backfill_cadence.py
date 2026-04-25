@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 import pandas as pd
 
-ROOT = Path('/Users/Pau/Documents/GitHub/Sports-Analytics')
+ROOT = Path(__file__).resolve().parent.parent
 PARQUET_DIR = ROOT / 'data' / 'processed' / 'cycling_power'
 OUT_JS = ROOT / 'dashboard' / 'cadence_activities.js'
 
