@@ -29,6 +29,7 @@ run_step() {
 run_step download_garmin     python src/download_garmin.py
 run_step fetch_cycling_power python src/fetch_cycling_power.py
 run_step fetch_daily_stats   python src/fetch_daily_stats.py
+run_step fetch_health_data   python src/fetch_health_data.py
 run_step parse_gpx           python src/parse_gpx.py
 run_step backfill_cadence    python src/backfill_cadence.py
 run_step fitness_fatigue     python src/fitness_fatigue.py

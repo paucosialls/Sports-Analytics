@@ -9,3 +9,6 @@ __pycache__/
 logs/
 data/processed/parsed_files.json
 data/processed/daily_stats.csv
+data/processed/health_raw/
+data/processed/health_fetched.json
+data/processed/health_daily.csv
