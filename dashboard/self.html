@@ -10,6 +10,7 @@
 <script src="activities.js"></script>
 <script src="daily_stats.js"></script>
 <script src="fitness.js"></script>
+<script src="health.js"></script>
 
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -93,6 +94,48 @@
   .tdee-breakdown .row .val { font-weight: 600; }
 
   .muted { color: var(--muted); font-size: .85rem; }
+
+  /* Garmin-style sub-palette used by the health sections */
+  :root {
+    --surface2: #232636;
+    --pink:     #f74f8e;
+    --purple:   #a98cf5;
+    --cyan:     #4fcfd8;
+    --red:      #ed5e5e;
+  }
+
+  /* Pills inside cards */
+  .card .pill { font-size: .68rem; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+                background: var(--surface2); color: var(--muted); align-self: flex-start; margin-top: 4px; }
+  .pill.good  { background: rgba(79,189,135,.15); color: var(--green); }
+  .pill.ok    { background: rgba(247,201,79,.15); color: var(--yellow); }
+  .pill.bad   { background: rgba(247,79,142,.15); color: var(--pink); }
+  .pill.cool  { background: rgba(79,207,216,.15); color: var(--cyan); }
+
+  /* Range selector for health charts */
+  .range-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .range-bar .label { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; }
+  .range-btn { background: var(--surface); color: var(--muted); border: 1px solid var(--border); border-radius: 8px;
+               padding: 6px 12px; font-size: .76rem; font-weight: 600; cursor: pointer; }
+  .range-btn:hover { color: var(--text); }
+  .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* Sleep heatmap */
+  .heatmap { display: grid; grid-template-columns: auto repeat(53, 1fr); gap: 2px; align-items: center;
+             font-variant-numeric: tabular-nums; overflow-x: auto; padding-bottom: 6px; }
+  .heatmap .day-label { color: var(--muted); font-size: .65rem; padding-right: 6px; height: 14px; line-height: 14px; }
+  .heatmap .cell { width: 100%; height: 14px; border-radius: 3px; background: var(--surface2); cursor: pointer; }
+  .heatmap-legend { display: flex; gap: 8px; align-items: center; margin-top: 10px; color: var(--muted); font-size: .72rem; }
+  .heatmap-legend .swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; }
+
+  /* Compact card variant for the "today vitals" row so it doesn't dwarf the kcal/BMR row */
+  .vitals-cards .card { padding: 12px 16px; }
+  .vitals-cards .card .value { font-size: 1.4rem; }
+
+  /* Mobile tweaks specific to the new health sections */
+  @media (max-width: 600px) {
+    .heatmap { grid-template-columns: auto repeat(53, 9px); }
+  }
 </style>
 </head>
 <body>
@@ -103,7 +146,6 @@
   <nav>
     <a href="index.html">Activities</a>
     <a href="self.html" class="active">Understanding Myself</a>
-    <a href="health.html">Health</a>
   </nav>
 </header>
 
@@ -162,20 +204,104 @@
     .fit-range-btn.active { background: var(--accent); color: #fff; }
   </style>
 
+  <!-- ── Health vitals (HRV, sleep, body battery, training readiness, stress) ── -->
+  <section class="cards vitals-cards" id="vitalsCards"></section>
+
+  <section class="panel" style="padding:14px 18px;">
+    <div class="range-bar">
+      <span class="label">Health charts range</span>
+      <button class="range-btn" data-days="14">14d</button>
+      <button class="range-btn active" data-days="30">30d</button>
+      <button class="range-btn" data-days="90">90d</button>
+      <button class="range-btn" data-days="180">6m</button>
+      <button class="range-btn" data-days="365">1y</button>
+      <button class="range-btn" data-days="0">All</button>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <h2 style="margin:0;">HRV (overnight) — heart rate variability</h2>
+      <span id="hrvStat" class="muted" style="font-size:.78rem;"></span>
+    </div>
+    <div class="chart-container" style="height:300px;"><canvas id="hrvChart"></canvas></div>
+    <div class="muted" style="margin-top:8px;font-size:.78rem;">
+      Cyan dots = nightly average. Solid line = 7-day rolling average. Gray band = your personal baseline (Garmin's balanced range).
+    </div>
+  </section>
+
+  <section class="two-col">
+    <div class="panel">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h2 style="margin:0;">Sleep score</h2><span id="sleepScoreStat" class="muted" style="font-size:.78rem;"></span></div>
+      <div class="chart-container"><canvas id="sleepScoreChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h2 style="margin:0;">Sleep duration</h2><span id="sleepHoursStat" class="muted" style="font-size:.78rem;"></span></div>
+      <div class="chart-container"><canvas id="sleepHoursChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h2 style="margin:0;">Sleep stages</h2><span id="stagesStat" class="muted" style="font-size:.78rem;"></span></div>
+    <div class="chart-container" style="height:300px;"><canvas id="sleepStagesChart"></canvas></div>
+    <div class="muted" style="margin-top:8px;font-size:.78rem;">Stacked nightly: deep, light, REM, awake. Healthy adult target ~15–20 % deep + 20–25 % REM.</div>
+  </section>
+
+  <section class="two-col">
+    <div class="panel">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h2 style="margin:0;">Body battery</h2><span id="bbStat" class="muted" style="font-size:.78rem;"></span></div>
+      <div class="chart-container"><canvas id="bbChart"></canvas></div>
+      <div class="muted" style="margin-top:6px;font-size:.74rem;">Green = charge gained, pink = drained. Yellow line = net (charged − drained).</div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h2 style="margin:0;">Training readiness</h2><span id="trStat" class="muted" style="font-size:.78rem;"></span></div>
+      <div class="chart-container"><canvas id="trChart"></canvas></div>
+      <div class="muted" style="margin-top:6px;font-size:.74rem;">Bars colored by level (green / amber / pink). Cyan line = recovery time in hours (right axis).</div>
+    </div>
+  </section>
+
+  <section class="two-col">
+    <div class="panel">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h2 style="margin:0;">Daily stress</h2><span id="stressStat" class="muted" style="font-size:.78rem;"></span></div>
+      <div class="chart-container"><canvas id="stressChart"></canvas></div>
+    </div>
+    <div class="panel">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;"><h2 style="margin:0;">Resting HR &amp; respiration</h2><span id="rhrStat" class="muted" style="font-size:.78rem;"></span></div>
+      <div class="chart-container"><canvas id="rhrChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+      <h2 style="margin:0;">Sleep score calendar (last 12 months)</h2>
+      <span id="heatmapStat" class="muted" style="font-size:.78rem;"></span>
+    </div>
+    <div id="heatmap" class="heatmap"></div>
+    <div class="heatmap-legend">
+      <span>worse</span>
+      <span class="swatch" style="background:#3a1c1c;"></span>
+      <span class="swatch" style="background:#7a2e2e;"></span>
+      <span class="swatch" style="background:#a86b1e;"></span>
+      <span class="swatch" style="background:#5e8a3a;"></span>
+      <span class="swatch" style="background:#4fbd87;"></span>
+      <span>better</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Garmin race time predictions (current)</h2>
+    <div class="cards" id="racePredictions" style="margin-top:8px;"></div>
+    <div class="muted" style="margin-top:10px;font-size:.78rem;">Based on current VO₂ max + recent training. Garmin's model assumes optimal pacing.</div>
+  </section>
+
   <section class="panel">
     <h2>Daily calories burned (last 180 days)</h2>
     <div class="chart-container"><canvas id="kcalChart"></canvas></div>
   </section>
 
-  <section class="two-col">
-    <div class="panel">
-      <h2>Weekly training volume (hours by type, last 12 weeks)</h2>
-      <div class="chart-container"><canvas id="volumeChart"></canvas></div>
-    </div>
-    <div class="panel">
-      <h2>Resting HR trend</h2>
-      <div class="chart-container"><canvas id="rhrChart"></canvas></div>
-    </div>
+  <section class="panel">
+    <h2>Weekly training volume (hours by type, last 12 weeks)</h2>
+    <div class="chart-container"><canvas id="volumeChart"></canvas></div>
   </section>
 
   <section class="panel">
@@ -310,7 +436,7 @@ Chart.defaults.color = '#6b7080';
 Chart.defaults.borderColor = '#2a2d3a';
 Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
 
-let kcalChart, volumeChart, rhrChart;
+let kcalChart, volumeChart;
 
 function renderKcalChart() {
   const rows = lastNDays(STATS, 180).filter(r => r.totalKilocalories != null);
@@ -393,37 +519,6 @@ function weekKey(d) {
   return x.toISOString().slice(0,10);
 }
 
-function renderRhrChart() {
-  const rows = lastNDays(STATS, 360).filter(r => r.restingHeartRate != null && r.restingHeartRate > 0);
-  const data = rows.map(r => ({ x: r.calendarDate, y: r.restingHeartRate }));
-  const rolling = data.map((d, i) => {
-    const win = data.slice(Math.max(0, i-6), i+1);
-    return { x: d.x, y: Math.round(win.reduce((a,b)=>a+b.y,0)/win.length) };
-  });
-
-  if (rhrChart) rhrChart.destroy();
-  const ctx = document.getElementById('rhrChart').getContext('2d');
-  rhrChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      datasets: [
-        { label: 'Daily', data, borderColor: '#f74f8e33', backgroundColor: 'transparent',
-          pointRadius: 1, borderWidth: 1 },
-        { label: '7-day avg', data: rolling, borderColor: '#f74f8e', backgroundColor: 'transparent',
-          tension: 0.3, pointRadius: 0, borderWidth: 2 },
-      ],
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: {
-        x: { type: 'time', time: { unit: 'month' }, grid: { color: '#2a2d3a55' } },
-        y: { grid: { color: '#2a2d3a55' }, title: { display: true, text: 'bpm' } },
-      },
-      plugins: { legend: { labels: { color: '#e2e4ed' } } },
-    }
-  });
-}
-
 // ── Plan ──────────────────────────────────────────────────────────────────
 function buildPlan(p) {
   // Weekly hours of cycling and running over last 8 weeks
@@ -492,7 +587,7 @@ function refresh() {
   renderWeightTarget(p);
   renderKcalChart();
   renderVolumeChart();
-  renderRhrChart();
+  renderHealthAll();
   buildPlan(p);
 }
 
@@ -634,6 +729,456 @@ if (window.fitnessData) {
     });
   });
 }
+
+// ── Health (HRV / sleep / body battery / training readiness / stress) ──────
+const HEALTH = (typeof window !== 'undefined' && window.HEALTH_DAILY) ? window.HEALTH_DAILY : [];
+const STATS_BY_DATE = {};
+for (const s of STATS) STATS_BY_DATE[s.calendarDate] = s;
+
+let HEALTH_RANGE_DAYS = 30;
+const healthCharts = {};
+
+function fmtN(v, dp = 0) { if (v == null || isNaN(v)) return '—'; return Number(v).toFixed(dp); }
+function fmtH(s) { if (!s) return '—'; const h = Math.floor(s/3600), m = Math.round((s%3600)/60); return `${h}h${String(m).padStart(2,'0')}`; }
+function rolling(arr, win, key) {
+  const out = new Array(arr.length).fill(null);
+  const buf = []; let sum = 0, n = 0;
+  for (let i = 0; i < arr.length; i++) {
+    const v = arr[i][key];
+    buf.push(v == null ? null : v);
+    if (v != null) { sum += v; n++; }
+    if (buf.length > win) {
+      const old = buf.shift();
+      if (old != null) { sum -= old; n--; }
+    }
+    out[i] = n > 0 ? sum / n : null;
+  }
+  return out;
+}
+function median(arr) {
+  const a = arr.filter(v => v != null && !isNaN(v)).sort((x,y) => x-y);
+  if (!a.length) return null;
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m-1]+a[m])/2;
+}
+function meanH(arr) {
+  const a = arr.filter(v => v != null && !isNaN(v));
+  return a.length ? a.reduce((x,y)=>x+y,0) / a.length : null;
+}
+function inHRange(rows, days) {
+  if (!days || days <= 0) return rows;
+  return rows.slice(-days);
+}
+function destroyHC(key) { if (healthCharts[key]) { healthCharts[key].destroy(); healthCharts[key] = null; } }
+
+function renderVitalsCards() {
+  const el = document.getElementById('vitalsCards');
+  if (!el) return;
+  if (!HEALTH.length) { el.innerHTML = ''; return; }
+  const today = HEALTH[HEALTH.length-1] || {};
+  const yest  = HEALTH[HEALTH.length-2] || {};
+  const last7  = HEALTH.slice(-7);
+  const last30 = HEALTH.slice(-30);
+
+  const hrv = today.hrv_last_night_avg ?? yest.hrv_last_night_avg;
+  const hrv7 = meanH(last7.map(r => r.hrv_last_night_avg));
+  const hrvStatus = today.hrv_status || yest.hrv_status;
+  const hrvPillCls = hrvStatus === 'BALANCED' ? 'good' : hrvStatus === 'UNBALANCED' ? 'bad' : 'ok';
+
+  const ss = today.sleep_score ?? yest.sleep_score;
+  const ssQual = today.sleep_score_qualifier ?? yest.sleep_score_qualifier;
+  const ssPillCls = ss == null ? '' : ss >= 80 ? 'good' : ss >= 60 ? 'ok' : 'bad';
+  const ssH = today.sleep_total_s ?? yest.sleep_total_s;
+
+  const tr = today.tr_score ?? yest.tr_score;
+  const trLevel = today.tr_level ?? yest.tr_level;
+  const trPill = trLevel === 'HIGH' ? 'good' : trLevel === 'MODERATE' ? 'ok' : trLevel === 'LOW' ? 'bad' : '';
+  const recovery = today.tr_recovery_time_min ?? yest.tr_recovery_time_min;
+
+  const bbCharge = today.bb_charged ?? yest.bb_charged;
+  const bbDrain  = today.bb_drained ?? yest.bb_drained;
+  const bbMax    = today.bb_max ?? yest.bb_max;
+
+  const vo2 = [...HEALTH].reverse().find(r => r.vo2max_cycling != null)?.vo2max_cycling;
+
+  const stressAvg = today.stress_avg ?? yest.stress_avg;
+  const stressLast30 = meanH(last30.map(r => r.stress_avg));
+
+  const tlb = today.training_status_feedback || yest.training_status_feedback;
+
+  const cards = [
+    { label: 'HRV last night', value: fmtN(hrv), sub: `7d avg ${fmtN(hrv7,0)} ms`, pill: hrvStatus || '', pillCls: hrvPillCls },
+    { label: 'Sleep score',   value: fmtN(ss),  sub: ssH ? fmtH(ssH) : '—',     pill: ssQual || '',    pillCls: ssPillCls },
+    { label: 'Training readiness', value: fmtN(tr), sub: recovery ? `recovery ${(recovery/60).toFixed(0)} h` : '—', pill: trLevel || '', pillCls: trPill },
+    { label: 'Body battery',  value: bbMax != null ? fmtN(bbMax) : '—', sub: bbCharge != null ? `+${bbCharge}  −${bbDrain}` : '—' },
+    { label: 'VO₂ max (cycling)', value: vo2 != null ? fmtN(vo2,1) : '—', sub: 'ml·kg⁻¹·min⁻¹', pill: tlb ? tlb.replace(/_/g,' ').toLowerCase() : '', pillCls: 'cool' },
+    { label: 'Stress avg',    value: fmtN(stressAvg), sub: stressLast30 ? `30d avg ${fmtN(stressLast30,0)}` : '' },
+  ];
+  el.innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="label">${c.label}</div>
+      <div class="value">${c.value}</div>
+      <div class="sub">${c.sub || ''}</div>
+      ${c.pill ? `<div class="pill ${c.pillCls || ''}">${c.pill}</div>` : ''}
+    </div>`).join('');
+}
+
+function defaultHOpts(extra = {}) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { labels: { color: '#cfd1da', boxWidth: 12, font: { size: 11 } } } },
+    scales: {
+      x: { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 8, autoSkip: true }, grid: { color: 'rgba(255,255,255,0.04)' } },
+      y: { ticks: { color: '#6b7080' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+    },
+    ...extra,
+  };
+}
+
+function renderHrvChart() {
+  if (!HEALTH.length) return;
+  const data = inHRange(HEALTH, HEALTH_RANGE_DAYS);
+  const labels = data.map(r => r.date);
+  const dots = data.map(r => r.hrv_last_night_avg ?? null);
+  const roll = rolling(data, 7, 'hrv_last_night_avg');
+  const baselineLow = data.map(r => r.hrv_baseline_balanced_low ?? null);
+  const baselineUp  = data.map(r => r.hrv_baseline_balanced_upper ?? null);
+
+  const med = median(dots);
+  const min = Math.min(...dots.filter(v => v != null));
+  const max = Math.max(...dots.filter(v => v != null));
+  const stat = document.getElementById('hrvStat');
+  if (stat) stat.textContent = `median ${fmtN(med,0)} ms · range ${fmtN(min,0)}–${fmtN(max,0)}`;
+
+  destroyHC('hrv');
+  healthCharts.hrv = new Chart(document.getElementById('hrvChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Baseline upper', data: baselineUp,  borderColor: 'rgba(255,255,255,0.04)', backgroundColor: 'rgba(255,255,255,0.10)', fill: '+1', pointRadius: 0, borderWidth: 0, tension: 0.3 },
+        { label: 'Baseline lower', data: baselineLow, borderColor: 'rgba(255,255,255,0.04)', backgroundColor: 'transparent', fill: false, pointRadius: 0, borderWidth: 0, tension: 0.3 },
+        { label: 'Nightly HRV (ms)', data: dots, borderColor: 'rgba(79,207,216,0.6)', backgroundColor: '#4fcfd8', borderWidth: 0, pointRadius: 3, pointHoverRadius: 5, showLine: false },
+        { label: '7-day rolling',    data: roll, borderColor: '#4fcfd8', backgroundColor: '#4fcfd8', borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
+      ],
+    },
+    options: defaultHOpts({
+      plugins: { legend: { labels: { color: '#cfd1da', filter: i => !i.text.startsWith('Baseline') } } },
+      scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { ticks: { color: '#6b7080', callback: v => v + ' ms' }, grid: { color: 'rgba(255,255,255,0.05)' } } },
+    }),
+  });
+}
+
+function renderSleepScoreChart() {
+  if (!HEALTH.length) return;
+  const data = inHRange(HEALTH, HEALTH_RANGE_DAYS);
+  const labels = data.map(r => r.date);
+  const scores = data.map(r => r.sleep_score ?? null);
+  const roll = rolling(data, 7, 'sleep_score');
+  const med = median(scores);
+  const stat = document.getElementById('sleepScoreStat');
+  if (stat) stat.textContent = `median ${fmtN(med,0)}`;
+
+  destroyHC('ss');
+  healthCharts.ss = new Chart(document.getElementById('sleepScoreChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Score', data: scores, borderColor: 'rgba(169,140,245,0.5)', backgroundColor: '#a98cf5', pointRadius: 2.5, showLine: false },
+        { label: '7-day avg', data: roll, borderColor: '#a98cf5', borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
+      ],
+    },
+    options: defaultHOpts({
+      scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { min: 0, max: 100, ticks: { color: '#6b7080' }, grid: { color: 'rgba(255,255,255,0.05)' } } },
+    }),
+  });
+}
+
+function renderSleepHoursChart() {
+  if (!HEALTH.length) return;
+  const data = inHRange(HEALTH, HEALTH_RANGE_DAYS);
+  const labels = data.map(r => r.date);
+  const hours = data.map(r => r.sleep_total_s != null ? r.sleep_total_s / 3600 : null);
+  const roll = rolling(data.map(r => ({ h: r.sleep_total_s != null ? r.sleep_total_s/3600 : null })), 7, 'h');
+  const med = median(hours);
+  const stat = document.getElementById('sleepHoursStat');
+  if (stat) stat.textContent = `median ${fmtN(med,1)} h`;
+
+  destroyHC('sh');
+  healthCharts.sh = new Chart(document.getElementById('sleepHoursChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar',  label: 'Hours slept', data: hours, backgroundColor: 'rgba(79,142,247,0.55)' },
+        { type: 'line', label: '7-day avg',   data: roll,  borderColor: '#f74f8e', borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
+      ],
+    },
+    options: defaultHOpts({
+      scales: { x: { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+                y: { min: 0, max: 12, ticks: { color: '#6b7080', callback: v => v + ' h' }, grid: { color: 'rgba(255,255,255,0.05)' } } },
+    }),
+  });
+}
+
+function renderSleepStagesChart() {
+  if (!HEALTH.length) return;
+  const data = inHRange(HEALTH, HEALTH_RANGE_DAYS);
+  const labels = data.map(r => r.date);
+  const deep  = data.map(r => r.sleep_deep_s  != null ? r.sleep_deep_s/3600  : 0);
+  const light = data.map(r => r.sleep_light_s != null ? r.sleep_light_s/3600 : 0);
+  const rem   = data.map(r => r.sleep_rem_s   != null ? r.sleep_rem_s/3600   : 0);
+  const awake = data.map(r => r.sleep_awake_s != null ? r.sleep_awake_s/3600 : 0);
+
+  const deepPct = meanH(data.map(r => (!r.sleep_total_s) ? null : 100 * (r.sleep_deep_s||0) / r.sleep_total_s));
+  const remPct  = meanH(data.map(r => (!r.sleep_total_s) ? null : 100 * (r.sleep_rem_s ||0) / r.sleep_total_s));
+  const stat = document.getElementById('stagesStat');
+  if (stat) stat.textContent = `avg ${fmtN(deepPct,0)}% deep · ${fmtN(remPct,0)}% REM`;
+
+  destroyHC('stages');
+  healthCharts.stages = new Chart(document.getElementById('sleepStagesChart'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: 'Deep',  data: deep,  backgroundColor: '#1f4d7a' },
+        { label: 'Light', data: light, backgroundColor: '#4f8ef7' },
+        { label: 'REM',   data: rem,   backgroundColor: '#a98cf5' },
+        { label: 'Awake', data: awake, backgroundColor: 'rgba(247,201,79,0.7)' },
+      ],
+    },
+    options: defaultHOpts({
+      scales: {
+        x: { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 8 }, grid: { display: false }, stacked: true },
+        y: { stacked: true, min: 0, ticks: { color: '#6b7080', callback: v => v + ' h' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      },
+    }),
+  });
+}
+
+function renderBodyBatteryChart() {
+  if (!HEALTH.length) return;
+  const data = inHRange(HEALTH, HEALTH_RANGE_DAYS);
+  const labels = data.map(r => r.date);
+  const charged = data.map(r => r.bb_charged ?? null);
+  const drained = data.map(r => r.bb_drained != null ? -r.bb_drained : null);
+  const net     = data.map(r => (r.bb_charged != null && r.bb_drained != null) ? (r.bb_charged - r.bb_drained) : null);
+  const totalCharged = charged.reduce((a,b) => a + (b||0), 0);
+  const totalDrained = drained.reduce((a,b) => a + (b||0), 0);
+  const stat = document.getElementById('bbStat');
+  if (stat) stat.textContent = `total +${totalCharged} / ${totalDrained}`;
+
+  destroyHC('bb');
+  healthCharts.bb = new Chart(document.getElementById('bbChart'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar',  label: 'Charged', data: charged, backgroundColor: 'rgba(79,189,135,0.6)' },
+        { type: 'bar',  label: 'Drained', data: drained, backgroundColor: 'rgba(247,79,142,0.55)' },
+        { type: 'line', label: 'Net',     data: net,     borderColor: '#f7c94f', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+      ],
+    },
+    options: defaultHOpts({
+      scales: {
+        x: { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 6 }, grid: { display: false }, stacked: true },
+        y: { stacked: false, ticks: { color: '#6b7080' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      },
+    }),
+  });
+}
+
+function renderTrainingReadinessChart() {
+  if (!HEALTH.length) return;
+  const data = inHRange(HEALTH, HEALTH_RANGE_DAYS);
+  const labels = data.map(r => r.date);
+  const score = data.map(r => r.tr_score ?? null);
+  const recoveryHrs = data.map(r => r.tr_recovery_time_min != null ? r.tr_recovery_time_min/60 : null);
+  const levelColor = lvl =>
+    lvl === 'HIGH' ? 'rgba(79,189,135,0.7)' :
+    lvl === 'MODERATE' ? 'rgba(247,201,79,0.7)' :
+    lvl === 'LOW' ? 'rgba(247,79,142,0.7)' :
+    'rgba(107,112,128,0.5)';
+  const bgs = data.map(r => levelColor(r.tr_level));
+  const med = median(score);
+  const stat = document.getElementById('trStat');
+  if (stat) stat.textContent = `median ${fmtN(med,0)}`;
+
+  destroyHC('tr');
+  healthCharts.tr = new Chart(document.getElementById('trChart'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar',  label: 'Readiness',     data: score,        backgroundColor: bgs, yAxisID: 'y' },
+        { type: 'line', label: 'Recovery (h)',  data: recoveryHrs,  borderColor: '#4fcfd8', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y1' },
+      ],
+    },
+    options: defaultHOpts({
+      scales: {
+        x:  { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 6 }, grid: { display: false } },
+        y:  { min: 0, max: 100, position: 'left',  ticks: { color: '#6b7080' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y1: { position: 'right', ticks: { color: '#4fcfd8', callback: v => v + 'h' }, grid: { display: false } },
+      },
+    }),
+  });
+}
+
+function renderStressChart() {
+  if (!HEALTH.length) return;
+  const data = inHRange(HEALTH, HEALTH_RANGE_DAYS);
+  const labels = data.map(r => r.date);
+  const avg = data.map(r => r.stress_avg ?? null);
+  const max = data.map(r => r.stress_max ?? null);
+  const med = median(avg);
+  const stat = document.getElementById('stressStat');
+  if (stat) stat.textContent = `median avg ${fmtN(med,0)}`;
+
+  destroyHC('stress');
+  healthCharts.stress = new Chart(document.getElementById('stressChart'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'bar',  label: 'Daily max',     data: max, backgroundColor: 'rgba(237,94,94,0.25)' },
+        { type: 'line', label: 'Daily average', data: avg, borderColor: '#ed5e5e', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+      ],
+    },
+    options: defaultHOpts({
+      scales: {
+        x: { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 6 }, grid: { display: false } },
+        y: { min: 0, max: 100, ticks: { color: '#6b7080' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+      },
+    }),
+  });
+}
+
+function renderRhrRespChart() {
+  // Uses HEALTH range for x-axis; pulls RHR from STATS_BY_DATE keyed on HEALTH dates.
+  const data = HEALTH.length ? inHRange(HEALTH, HEALTH_RANGE_DAYS) : [];
+  const labels = data.map(r => r.date);
+  const rhr = data.map(r => (STATS_BY_DATE[r.date]||{}).restingHeartRate ?? null);
+  const respWake  = data.map(r => r.resp_avg_waking ?? null);
+  const respSleep = data.map(r => r.resp_avg_sleep ?? r.sleep_avg_respiration ?? null);
+  const cur = [...rhr].reverse().find(v => v != null);
+  const stat = document.getElementById('rhrStat');
+  if (stat) stat.textContent = cur ? `RHR ${cur} bpm` : '';
+
+  destroyHC('rhr');
+  healthCharts.rhr = new Chart(document.getElementById('rhrChart'), {
+    data: {
+      labels,
+      datasets: [
+        { type: 'line', label: 'Resting HR (bpm)',     data: rhr,       borderColor: '#4f8ef7', backgroundColor: 'rgba(79,142,247,0.15)', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
+        { type: 'line', label: 'Respiration sleep',    data: respSleep, borderColor: '#a98cf5', borderWidth: 1.5, pointRadius: 0, borderDash: [4,3], tension: 0.3, yAxisID: 'y1' },
+        { type: 'line', label: 'Respiration awake',    data: respWake,  borderColor: '#4fcfd8', borderWidth: 1.5, pointRadius: 0, borderDash: [4,3], tension: 0.3, yAxisID: 'y1' },
+      ],
+    },
+    options: defaultHOpts({
+      scales: {
+        x:  { type: 'time', time: { unit: 'day' }, ticks: { color: '#6b7080', maxTicksLimit: 6 }, grid: { display: false } },
+        y:  { position: 'left',  ticks: { color: '#4f8ef7', callback: v => v + ' bpm' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+        y1: { position: 'right', ticks: { color: '#a98cf5', callback: v => v + ' br/min' }, grid: { display: false } },
+      },
+    }),
+  });
+}
+
+function renderHeatmap() {
+  const last = HEALTH.slice(-365);
+  const el = document.getElementById('heatmap');
+  if (!el || !last.length) return;
+  const start = new Date(last[0].date + 'T00:00:00');
+  start.setDate(start.getDate() - start.getDay());
+  const byDate = new Map(last.map(r => [r.date, r.sleep_score]));
+  const dayLabels = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+  const end = new Date(last[last.length-1].date + 'T00:00:00');
+  const weeks = Math.ceil((end - start) / (7*86400e3)) + 1;
+
+  function color(score) {
+    if (score == null) return 'var(--surface2)';
+    if (score >= 85) return '#4fbd87';
+    if (score >= 70) return '#5e8a3a';
+    if (score >= 55) return '#a86b1e';
+    if (score >= 40) return '#7a2e2e';
+    return '#3a1c1c';
+  }
+  const isoDate = d => d.toISOString().slice(0,10);
+  let html = '';
+  for (let row = 0; row < 7; row++) {
+    html += `<div class="day-label">${row % 2 ? dayLabels[row] : ''}</div>`;
+    for (let col = 0; col < weeks; col++) {
+      const d = new Date(start);
+      d.setDate(d.getDate() + col*7 + row);
+      const key = isoDate(d);
+      const score = byDate.get(key);
+      const tip = score == null ? `${key} · no data` : `${key} · ${score}`;
+      html += `<div class="cell" style="background:${color(score)}" title="${tip}"></div>`;
+    }
+  }
+  el.innerHTML = html;
+  const scores = last.map(r => r.sleep_score).filter(v => v != null);
+  const stat = document.getElementById('heatmapStat');
+  if (stat) stat.textContent = scores.length
+    ? `median ${fmtN(median(scores),0)} · ${scores.length} nights tracked`
+    : '';
+}
+
+function fmtPace(s) {
+  if (s == null) return '—';
+  const m = Math.floor(s/60), sec = Math.round(s%60);
+  return `${m}:${String(sec).padStart(2,'0')}`;
+}
+function renderRacePredictions() {
+  const last = [...HEALTH].reverse().find(r => r.race_5k_s || r.race_10k_s || r.race_half_s || r.race_marathon_s);
+  const el = document.getElementById('racePredictions');
+  if (!el) return;
+  if (!last) {
+    el.innerHTML = `<div class="card"><div class="sub">No race predictions yet — Garmin needs more running data.</div></div>`;
+    return;
+  }
+  const races = [
+    ['5K',        last.race_5k_s, 5],
+    ['10K',       last.race_10k_s, 10],
+    ['Half Mar.', last.race_half_s, 21.0975],
+    ['Marathon',  last.race_marathon_s, 42.195],
+  ];
+  el.innerHTML = races.map(([n, s, km]) => {
+    const pacePerKm = s ? s/km : null;
+    return `<div class="card">
+      <div class="label">${n}</div>
+      <div class="value">${fmtPace(s)}</div>
+      <div class="sub">${pacePerKm ? fmtPace(pacePerKm) + '/km' : ''}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderHealthAll() {
+  renderVitalsCards();
+  renderHrvChart();
+  renderSleepScoreChart();
+  renderSleepHoursChart();
+  renderSleepStagesChart();
+  renderBodyBatteryChart();
+  renderTrainingReadinessChart();
+  renderStressChart();
+  renderRhrRespChart();
+  renderRacePredictions();
+}
+
+// Range buttons (only the ones inside .range-bar — not the fitness PMC buttons)
+document.querySelectorAll('.range-bar .range-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.range-bar .range-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    HEALTH_RANGE_DAYS = parseInt(btn.dataset.days, 10) || 0;
+    renderHealthAll();
+  });
+});
+
+// Heatmap is fixed at last 365 days, render once.
+renderHeatmap();
 </script>
 
 </body>
