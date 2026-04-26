@@ -607,7 +607,9 @@ document.getElementById('profileForm').addEventListener('submit', e => {
   refresh();
 });
 
-refresh();
+// (Initial refresh() moved to the very end, after the health section's
+// `const HEALTH` etc. are declared — they're inside the temporal dead zone
+// until then, and refresh() touches them via renderHealthAll().)
 
 // ── Fitness & Fatigue (PMC) ───────────────────────────────────────────────
 let fitnessChart;
@@ -1179,6 +1181,9 @@ document.querySelectorAll('.range-bar .range-btn').forEach(btn => {
 
 // Heatmap is fixed at last 365 days, render once.
 renderHeatmap();
+
+// Now that all health declarations are in place, do the initial render.
+refresh();
 </script>
 
 </body>
