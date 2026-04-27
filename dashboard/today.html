@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Today — Sports Analytics</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="health.js"></script>
+<script src="daily_stats.js"></script>
+<script src="fitness.js"></script>
+
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d27;
+    --surface2: #232636;
+    --border:   #2a2d3a;
+    --accent:   #4f8ef7;
+    --green:    #4fbd87;
+    --yellow:   #f7c94f;
+    --orange:   #f79b4f;
+    --pink:     #f74f8e;
+    --purple:   #a98cf5;
+    --cyan:     #4fcfd8;
+    --red:      #ed5e5e;
+    --text:     #e2e4ed;
+    --muted:    #6b7080;
+  }
+  body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+  header { padding: 18px 28px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  header h1 { font-size: 1.2rem; font-weight: 700; }
+  header span#sub { color: var(--muted); font-size: .85rem; }
+  header nav { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+  header nav a { color: var(--muted); font-size: .85rem; text-decoration: none; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); }
+  header nav a.active { color: var(--accent); border-color: var(--accent); }
+
+  main { padding: 24px 20px; max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+
+  /* Hero readiness card */
+  .hero {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 18px;
+    padding: 28px 24px;
+    display: flex; align-items: center; gap: 28px; flex-wrap: wrap;
+  }
+  .gauge-wrap { position: relative; width: 200px; height: 200px; flex: 0 0 auto; }
+  .gauge-wrap canvas { width: 100% !important; height: 100% !important; }
+  .gauge-text {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  .gauge-text .num { font-size: 3.6rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .gauge-text .lvl { font-size: .8rem; text-transform: uppercase; letter-spacing: .12em; margin-top: 6px; color: var(--muted); }
+
+  .hero-text { flex: 1 1 280px; min-width: 240px; }
+  .hero-text .greet { font-size: 1.6rem; font-weight: 700; line-height: 1.15; margin-bottom: 6px; }
+  .hero-text .verdict { color: var(--text); font-size: 1rem; line-height: 1.5; }
+  .hero-text .verdict strong { color: var(--text); }
+  .hero-text .recommend {
+    margin-top: 16px; padding: 12px 14px; border-radius: 12px;
+    background: var(--surface2); color: var(--text); font-size: .92rem; line-height: 1.45;
+    border-left: 3px solid var(--accent);
+  }
+
+  /* Pillars row */
+  .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .pillar {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 6px;
+  }
+  .pillar .title { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+  .pillar .big { font-size: 2rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .pillar .unit { color: var(--muted); font-size: .82rem; font-weight: 500; margin-left: 4px; }
+  .pillar .sub { color: var(--muted); font-size: .8rem; }
+  .pillar.good .big  { color: var(--green); }
+  .pillar.ok .big    { color: var(--yellow); }
+  .pillar.bad .big   { color: var(--pink); }
+  .pillar .bar { height: 6px; background: var(--surface2); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .pillar .bar > div { height: 100%; border-radius: 3px; }
+
+  /* vs-baseline rows */
+  .compare {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 4px 18px;
+  }
+  .compare .row {
+    display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.6fr;
+    align-items: center; gap: 8px;
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+  }
+  .compare .row:last-child { border-bottom: 0; }
+  .compare .label  { color: var(--muted); font-size: .82rem; }
+  .compare .today  { font-size: 1.05rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .compare .base   { color: var(--muted); font-size: .85rem; font-variant-numeric: tabular-nums; }
+  .compare .delta  { font-size: .85rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .delta.up   { color: var(--green); }
+  .delta.down { color: var(--pink); }
+  .delta.flat { color: var(--muted); }
+  .delta.bad-up   { color: var(--pink); }   /* used when "up" is bad (e.g. RHR) */
+  .delta.good-down{ color: var(--green); }  /* "down" is good (e.g. RHR) */
+
+  /* 7-day trend strip */
+  .trend7 {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 18px;
+  }
+  .trend7 .title-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .trend7 .title { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+  .trend7 .stat { color: var(--text); font-size: .82rem; font-variant-numeric: tabular-nums; }
+  .trend7 .bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 80px; }
+  .trend7 .bar  { border-radius: 6px 6px 0 0; min-height: 4px; transition: height .2s; cursor: pointer; }
+  .trend7 .day-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 6px; }
+  .trend7 .day { color: var(--muted); font-size: .68rem; text-align: center; }
+
+  .empty { padding: 60px; text-align: center; color: var(--muted); }
+  .empty strong { display: block; font-size: 1.05rem; color: var(--text); margin-bottom: 8px; }
+
+  /* Mobile */
+  @media (max-width: 700px) {
+    main { padding: 16px 14px; gap: 14px; }
+    .hero { flex-direction: column; align-items: stretch; padding: 22px 18px; gap: 18px; }
+    .gauge-wrap { width: 180px; height: 180px; align-self: center; }
+    .gauge-text .num { font-size: 3rem; }
+    .hero-text { text-align: center; }
+    .hero-text .recommend { text-align: left; }
+    .pillars { grid-template-columns: 1fr; }
+    .compare .row { grid-template-columns: 1.2fr 1fr 0.8fr; }
+    .compare .row .base { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+  <h1>Today</h1>
+  <span id="sub"></span>
+  <nav>
+    <a href="today.html" class="active">Today</a>
+    <a href="self.html">Understanding Myself</a>
+    <a href="index.html">Activities</a>
+  </nav>
+</header>
+
+<main id="root">
+  <!-- Filled by JS -->
+</main>
+
+<script>
+const HEALTH = (typeof window !== 'undefined' && window.HEALTH_DAILY) ? window.HEALTH_DAILY : [];
+const STATS  = (typeof window !== 'undefined' && window.DAILY_STATS)  ? window.DAILY_STATS  : [];
+const FITNESS = (typeof window !== 'undefined' && window.fitnessData) ? window.fitnessData : null;
+
+const STATS_BY_DATE = {};
+for (const s of STATS) STATS_BY_DATE[s.calendarDate] = s;
+
+const FITNESS_BY_DATE = {};
+if (FITNESS && FITNESS.daily) {
+  for (const d of FITNESS.daily) FITNESS_BY_DATE[d.date] = d;
+}
+
+if (!HEALTH.length) {
+  document.getElementById('root').innerHTML =
+    '<div class="empty"><strong>No health data</strong>Run <code>python src/fetch_health_data.py</code> first.</div>';
+  throw new Error('no health data');
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function meanH(arr) {
+  const a = arr.filter(v => v != null && !isNaN(v));
+  return a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+}
+function fmtN(v, dp = 0) {
+  if (v == null || isNaN(v)) return '—';
+  return Number(v).toFixed(dp);
+}
+function fmtH(s) {
+  if (!s) return '—';
+  const h = Math.floor(s/3600), m = Math.round((s%3600)/60);
+  return `${h}h${String(m).padStart(2,'0')}`;
+}
+function levelColor(lvl, score) {
+  if (lvl === 'HIGH'     || score >= 75) return getCss('--green');
+  if (lvl === 'MODERATE' || score >= 50) return getCss('--yellow');
+  if (lvl === 'LOW'      || score != null) return getCss('--pink');
+  return getCss('--muted');
+}
+function getCss(name) {
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+}
+
+// ── Today's snapshot ────────────────────────────────────────────────────────
+const today = HEALTH[HEALTH.length-1] || {};
+const yest  = HEALTH[HEALTH.length-2] || {};
+
+// 30-day baselines (excluding today so deltas are meaningful)
+const last30 = HEALTH.slice(-31, -1);
+const baseHRV   = meanH(last30.map(r => r.hrv_last_night_avg));
+const baseSleep = meanH(last30.map(r => r.sleep_score));
+const baseSleepH = meanH(last30.map(r => r.sleep_total_s).map(s => s != null ? s/3600 : null));
+const baseTR    = meanH(last30.map(r => r.tr_score));
+const baseStress = meanH(last30.map(r => r.stress_avg));
+const baseBB    = meanH(last30.map(r => r.bb_max));
+const baseRHR   = meanH(last30.map(r => (STATS_BY_DATE[r.date]||{}).restingHeartRate).filter(v => v && v > 0));
+const baseRespSleep = meanH(last30.map(r => r.resp_avg_sleep ?? r.sleep_avg_respiration));
+
+// Today values (fall back to yesterday for fields that haven't synced today)
+const tr      = today.tr_score      ?? yest.tr_score;
+const trLvl   = today.tr_level      ?? yest.tr_level;
+const recovHr = (today.tr_recovery_time_min ?? yest.tr_recovery_time_min);
+const recoveryHrs = recovHr != null ? Math.round(recovHr / 60) : null;
+const ss      = today.sleep_score   ?? yest.sleep_score;
+const ssH     = today.sleep_total_s ?? yest.sleep_total_s;
+const hrv     = today.hrv_last_night_avg ?? yest.hrv_last_night_avg;
+const hrvSt   = today.hrv_status   ?? yest.hrv_status;
+const bbMax   = today.bb_max       ?? yest.bb_max;
+const bbCharge = today.bb_charged  ?? yest.bb_charged;
+const bbDrain = today.bb_drained   ?? yest.bb_drained;
+const stressAvg = today.stress_avg ?? yest.stress_avg;
+const respSleep = today.resp_avg_sleep ?? today.sleep_avg_respiration ?? yest.resp_avg_sleep ?? yest.sleep_avg_respiration;
+const rhr     = (STATS_BY_DATE[today.date]||{}).restingHeartRate
+             || (STATS_BY_DATE[yest.date]||{}).restingHeartRate;
+
+const fit = FITNESS_BY_DATE[today.date] || FITNESS_BY_DATE[yest.date] || null;
+const tsbToday = fit ? fit.tsb : null;
+const ctlToday = fit ? fit.ctl : null;
+const tssYesterday = (FITNESS_BY_DATE[yest.date] || {}).tss;
+
+// ── Greeting & verdict ──────────────────────────────────────────────────────
+const greet = (() => {
+  const h = new Date().getHours();
+  if (h < 6)  return 'Buenas noches';
+  if (h < 13) return 'Buenos días';
+  if (h < 20) return 'Buenas tardes';
+  return 'Buenas noches';
+})();
+
+function pickVerdict() {
+  // Compose a one-line verdict from training readiness + TSB + sleep score.
+  if (tr == null) return 'Sin datos suficientes para hoy.';
+  let head = '';
+  if (tr >= 75) head = 'Estás <strong>recuperado</strong>.';
+  else if (tr >= 50) head = '<strong>Recuperación moderada</strong>.';
+  else head = 'Hoy estás <strong>fatigado</strong>.';
+
+  let why = [];
+  if (ss != null && baseSleep != null) {
+    if (ss < baseSleep - 10) why.push(`sueño bajo (${ss} vs media ${Math.round(baseSleep)})`);
+    else if (ss > baseSleep + 5) why.push(`sueño bueno (${ss})`);
+  }
+  if (hrv != null && baseHRV != null) {
+    if (hrv < baseHRV - 5) why.push(`HRV por debajo de tu media (${hrv} vs ${Math.round(baseHRV)})`);
+    else if (hrv > baseHRV + 5) why.push(`HRV alta (${hrv})`);
+  }
+  if (tsbToday != null) {
+    if (tsbToday < -10) why.push(`forma negativa (TSB ${tsbToday.toFixed(0)})`);
+    else if (tsbToday > 10) why.push(`muy fresco (TSB +${tsbToday.toFixed(0)})`);
+  }
+  return head + (why.length ? ' Causas: ' + why.join(', ') + '.' : '');
+}
+
+function pickRecommendation() {
+  if (tr == null) return 'Carga la última sincronización del Garmin para ver una recomendación.';
+  if (tr >= 80 && (tsbToday == null || tsbToday >= -5)) {
+    return '🟢 Día ideal para una sesión <strong>dura</strong>: intervalos VO₂, salida larga con tramos a tope, o fuerza pesada.';
+  }
+  if (tr >= 65) {
+    return '🟡 Sesión <strong>moderada</strong> bien tolerada: zona 2 larga, sweet-spot moderado, o técnica.';
+  }
+  if (tr >= 45) {
+    return '🟠 Mejor <strong>fácil</strong>: rodaje suave en Z2, paseo, o sesión técnica corta. Evita intensidad.';
+  }
+  return '🔴 <strong>Recupera</strong>. Día de descanso completo o sólo movilidad / paseo. Prioriza sueño y comida.';
+}
+
+// ── Render: hero ────────────────────────────────────────────────────────────
+function render() {
+  const root = document.getElementById('root');
+  const trColor = levelColor(trLvl, tr);
+
+  root.innerHTML = `
+    <section class="hero">
+      <div class="gauge-wrap">
+        <canvas id="readinessGauge"></canvas>
+        <div class="gauge-text">
+          <div class="num" style="color:${trColor}">${tr ?? '—'}</div>
+          <div class="lvl">${trLvl ? trLvl.toLowerCase() : 'readiness'}</div>
+        </div>
+      </div>
+      <div class="hero-text">
+        <div class="greet">${greet}, Pau</div>
+        <div class="verdict">${pickVerdict()}</div>
+        <div class="recommend">${pickRecommendation()}</div>
+      </div>
+    </section>
+
+    <section class="pillars">
+      ${pillarHTML('sleep')}
+      ${pillarHTML('hrv')}
+      ${pillarHTML('strain')}
+    </section>
+
+    <section class="compare" id="compareCard">
+      ${compareRow('Sueño',   ssH != null ? ssH/3600 : null, baseSleepH, ' h', 1, 'higher-good')}
+      ${compareRow('HRV',     hrv,        baseHRV,           ' ms', 0, 'higher-good')}
+      ${compareRow('FC reposo', rhr,      baseRHR,           ' bpm', 0, 'lower-good')}
+      ${compareRow('Body battery max', bbMax, baseBB,        '',     0, 'higher-good')}
+      ${compareRow('Estrés medio',     stressAvg, baseStress, '',    0, 'lower-good')}
+      ${compareRow('Respiración nocturna', respSleep, baseRespSleep, ' br/min', 1, 'lower-good')}
+    </section>
+
+    <section class="trend7">
+      <div class="title-row">
+        <span class="title">Readiness — últimos 7 días</span>
+        <span class="stat" id="trend7Stat"></span>
+      </div>
+      <div class="bars" id="trend7Bars"></div>
+      <div class="day-labels" id="trend7Labels"></div>
+    </section>
+
+    <section class="trend7">
+      <div class="title-row">
+        <span class="title">Carga (TSS) — últimos 7 días</span>
+        <span class="stat" id="trend7TssStat"></span>
+      </div>
+      <div class="bars" id="trend7TssBars"></div>
+      <div class="day-labels" id="trend7TssLabels"></div>
+    </section>
+  `;
+
+  drawGauge(tr, trColor);
+  drawTrendStrip();
+  drawTrendStripTSS();
+
+  document.getElementById('sub').textContent =
+    `${today.date} · ${HEALTH.length} días registrados` +
+    (recoveryHrs != null ? ` · recuperación ${recoveryHrs} h` : '');
+}
+
+function pillarHTML(kind) {
+  if (kind === 'sleep') {
+    const cls = ss == null ? '' : ss >= 80 ? 'good' : ss >= 60 ? 'ok' : 'bad';
+    const target = 8 * 3600;  // 8h target
+    const pct = ssH ? Math.min(100, 100 * ssH / target) : 0;
+    const color = ss >= 80 ? 'var(--green)' : ss >= 60 ? 'var(--yellow)' : 'var(--pink)';
+    return `<div class="pillar ${cls}">
+      <div class="title">Sueño</div>
+      <div><span class="big">${ss ?? '—'}</span><span class="unit">/100</span></div>
+      <div class="sub">${ssH ? fmtH(ssH) : '—'} ${ssH ? `· ${(ssH/3600/8*100).toFixed(0)}% del objetivo 8 h` : ''}</div>
+      <div class="bar"><div style="width:${pct.toFixed(0)}%;background:${color}"></div></div>
+    </div>`;
+  }
+  if (kind === 'hrv') {
+    const ok = hrvSt === 'BALANCED';
+    const cls = ok ? 'good' : (hrvSt === 'UNBALANCED' ? 'bad' : 'ok');
+    const delta = (hrv != null && baseHRV != null) ? hrv - baseHRV : null;
+    return `<div class="pillar ${cls}">
+      <div class="title">HRV anoche</div>
+      <div><span class="big">${hrv ?? '—'}</span><span class="unit">ms</span></div>
+      <div class="sub">${hrvSt ? hrvSt.toLowerCase() : ''}${delta != null ? ` · ${delta > 0 ? '+' : ''}${delta.toFixed(0)} vs media 30d` : ''}</div>
+    </div>`;
+  }
+  // strain: yesterday's TSS + today's TSB
+  const tss = tssYesterday;
+  const cls = tss == null ? '' : tss >= 100 ? 'bad' : tss >= 50 ? 'ok' : 'good';
+  const tsb = tsbToday;
+  return `<div class="pillar ${cls}">
+    <div class="title">Carga ayer</div>
+    <div><span class="big">${tss != null ? Math.round(tss) : '—'}</span><span class="unit">TSS</span></div>
+    <div class="sub">${tsb != null ? `Forma ${tsb >= 0 ? '+' : ''}${tsb.toFixed(0)}` : '—'}${ctlToday != null ? ` · CTL ${ctlToday.toFixed(0)}` : ''}</div>
+  </div>`;
+}
+
+function compareRow(label, today, base, unit, dp, direction) {
+  if (today == null && base == null) {
+    return `<div class="row"><div class="label">${label}</div><div class="today">—</div><div class="base">—</div><div class="delta flat">—</div></div>`;
+  }
+  let dCls = 'flat', dTxt = '—';
+  if (today != null && base != null) {
+    const d = today - base;
+    const sign = d > 0 ? '+' : (d < 0 ? '' : '');
+    dTxt = `${sign}${d.toFixed(dp)}${unit}`;
+    if (Math.abs(d) < (base * 0.02)) dCls = 'flat';
+    else if (direction === 'higher-good') dCls = d >= 0 ? 'up' : 'down';
+    else if (direction === 'lower-good')  dCls = d <= 0 ? 'good-down' : 'bad-up';
+    else dCls = d >= 0 ? 'up' : 'down';
+  }
+  return `<div class="row">
+    <div class="label">${label}</div>
+    <div class="today">${today != null ? fmtN(today, dp) + unit : '—'}</div>
+    <div class="base">vs ${base != null ? fmtN(base, dp) + unit : '—'}</div>
+    <div class="delta ${dCls}">${dTxt}</div>
+  </div>`;
+}
+
+// ── Readiness gauge (semi-circle) ───────────────────────────────────────────
+function drawGauge(score, color) {
+  const c = document.getElementById('readinessGauge');
+  if (!c) return;
+  const v = score != null ? score : 0;
+  new Chart(c, {
+    type: 'doughnut',
+    data: {
+      datasets: [{
+        data: [v, 100 - v],
+        backgroundColor: [color, getCss('--surface2')],
+        borderWidth: 0,
+        circumference: 270,
+        rotation: 225,
+        cutout: '78%',
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      animation: { duration: 700 },
+    },
+  });
+}
+
+// ── 7-day trend strip ──────────────────────────────────────────────────────
+function drawTrendStrip() {
+  const last7 = HEALTH.slice(-7);
+  const bars = document.getElementById('trend7Bars');
+  const labels = document.getElementById('trend7Labels');
+  const stat = document.getElementById('trend7Stat');
+  if (!bars) return;
+  const dayNames = ['dom','lun','mar','mié','jue','vie','sáb'];
+  bars.innerHTML = last7.map(r => {
+    const v = r.tr_score ?? 0;
+    const lvl = r.tr_level;
+    const color = lvl === 'HIGH' ? 'var(--green)' : lvl === 'MODERATE' ? 'var(--yellow)' : lvl === 'LOW' ? 'var(--pink)' : 'var(--muted)';
+    const pct = Math.max(4, Math.min(100, v));
+    return `<div class="bar" style="height:${pct}%;background:${color}" title="${r.date}: ${r.tr_score ?? '—'}"></div>`;
+  }).join('');
+  labels.innerHTML = last7.map(r => {
+    const d = new Date(r.date + 'T00:00:00');
+    return `<div class="day">${dayNames[d.getDay()]}</div>`;
+  }).join('');
+  const avg = meanH(last7.map(r => r.tr_score));
+  stat.textContent = avg ? `media ${avg.toFixed(0)}` : '';
+}
+
+function drawTrendStripTSS() {
+  const last7Dates = HEALTH.slice(-7).map(r => r.date);
+  const bars = document.getElementById('trend7TssBars');
+  const labels = document.getElementById('trend7TssLabels');
+  const stat = document.getElementById('trend7TssStat');
+  if (!bars) return;
+  const dayNames = ['dom','lun','mar','mié','jue','vie','sáb'];
+  const vals = last7Dates.map(d => (FITNESS_BY_DATE[d] || {}).tss || 0);
+  const maxV = Math.max(40, ...vals);
+  bars.innerHTML = vals.map((v, i) => {
+    const pct = Math.max(2, Math.min(100, 100 * v / maxV));
+    const color = v >= 100 ? 'var(--pink)' : v >= 50 ? 'var(--yellow)' : v > 0 ? 'var(--green)' : 'var(--surface2)';
+    return `<div class="bar" style="height:${pct}%;background:${color}" title="${last7Dates[i]}: ${v.toFixed(0)} TSS"></div>`;
+  }).join('');
+  labels.innerHTML = last7Dates.map(d => {
+    const dt = new Date(d + 'T00:00:00');
+    return `<div class="day">${dayNames[dt.getDay()]}</div>`;
+  }).join('');
+  const total = vals.reduce((a,b)=>a+b, 0);
+  stat.textContent = `total ${Math.round(total)} TSS`;
+}
+
+render();
+</script>
+
+</body>
+</html>
