@@ -102,6 +102,44 @@
   .delta.bad-up   { color: var(--pink); }   /* used when "up" is bad (e.g. RHR) */
   .delta.good-down{ color: var(--green); }  /* "down" is good (e.g. RHR) */
 
+  /* Evolución panel: multiple sparkline rows with one global range filter */
+  .evolution {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 18px;
+  }
+  .evolution .head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .evolution .head .title { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+  .evolution .range-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+  .evolution .range-btn {
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px; font-size: .72rem; font-weight: 600; cursor: pointer;
+  }
+  .evolution .range-btn:hover { color: var(--text); }
+  .evolution .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .spark-row {
+    display: grid; grid-template-columns: 1.1fr 0.8fr 2fr 0.7fr;
+    align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--border);
+  }
+  .spark-row:last-child { border-bottom: 0; }
+  .spark-row .name { color: var(--muted); font-size: .82rem; }
+  .spark-row .now  { font-size: 1rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .spark-row .now .unit { color: var(--muted); font-size: .78rem; font-weight: 500; margin-left: 3px; }
+  .spark-row .canvas-wrap { position: relative; height: 36px; }
+  .spark-row .canvas-wrap canvas { width: 100% !important; height: 100% !important; }
+  .spark-row .delta { font-size: .82rem; font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+  .spark-row .delta.up   { color: var(--green); }
+  .spark-row .delta.down { color: var(--pink); }
+  .spark-row .delta.flat { color: var(--muted); }
+  .spark-row .delta.bad-up   { color: var(--pink); }
+  .spark-row .delta.good-down{ color: var(--green); }
+
+  @media (max-width: 700px) {
+    .spark-row { grid-template-columns: 1fr 0.8fr 1.2fr 0.7fr; gap: 6px; }
+    .spark-row .canvas-wrap { height: 32px; }
+    .spark-row .name { font-size: .76rem; }
+  }
+
   /* 7-day trend strip */
   .trend7 {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
@@ -312,6 +350,20 @@ function render() {
       ${compareRow('Respiración nocturna', respSleep, baseRespSleep, ' br/min', 1, 'lower-good')}
     </section>
 
+    <section class="evolution">
+      <div class="head">
+        <span class="title">Evolución</span>
+        <div class="range-bar" id="evolRange">
+          <button class="range-btn" data-days="14">14d</button>
+          <button class="range-btn active" data-days="30">30d</button>
+          <button class="range-btn" data-days="90">90d</button>
+          <button class="range-btn" data-days="180">6m</button>
+          <button class="range-btn" data-days="365">1y</button>
+        </div>
+      </div>
+      <div id="evolutionRows"></div>
+    </section>
+
     <section class="trend7">
       <div class="title-row">
         <span class="title">Readiness — últimos 7 días</span>
@@ -332,6 +384,7 @@ function render() {
   `;
 
   drawGauge(tr, trColor);
+  renderEvolution(EVOL_RANGE_DAYS);
   drawTrendStrip();
   drawTrendStripTSS();
 
@@ -395,6 +448,124 @@ function compareRow(label, today, base, unit, dp, direction) {
     <div class="delta ${dCls}">${dTxt}</div>
   </div>`;
 }
+
+// ── Evolution panel: per-parameter sparklines, filterable by range ─────────
+let EVOL_RANGE_DAYS = 30;
+const sparkCharts = {};
+
+// One row per parameter. `extract` returns the y series aligned with HEALTH dates;
+// `direction` decides delta color (higher-good vs lower-good).
+const EVOL_PARAMS = [
+  { key: 'tr',     name: 'Readiness',           color: '#4f8ef7', unit: '',      dp: 0, direction: 'higher-good',
+    extract: r => r.tr_score },
+  { key: 'sleep',  name: 'Sueño (score)',       color: '#a98cf5', unit: '',      dp: 0, direction: 'higher-good',
+    extract: r => r.sleep_score },
+  { key: 'sleeph', name: 'Horas de sueño',      color: '#4f8ef7', unit: 'h',     dp: 1, direction: 'higher-good',
+    extract: r => r.sleep_total_s != null ? r.sleep_total_s/3600 : null },
+  { key: 'hrv',    name: 'HRV',                 color: '#4fcfd8', unit: 'ms',    dp: 0, direction: 'higher-good',
+    extract: r => r.hrv_last_night_avg },
+  { key: 'rhr',    name: 'FC reposo',           color: '#f74f8e', unit: 'bpm',   dp: 0, direction: 'lower-good',
+    extract: r => (STATS_BY_DATE[r.date] || {}).restingHeartRate || null },
+  { key: 'bb',     name: 'Body battery max',    color: '#4fbd87', unit: '',      dp: 0, direction: 'higher-good',
+    extract: r => r.bb_max },
+  { key: 'stress', name: 'Estrés medio',        color: '#ed5e5e', unit: '',      dp: 0, direction: 'lower-good',
+    extract: r => r.stress_avg },
+  { key: 'resp',   name: 'Respiración nocturna', color: '#a98cf5', unit: 'br/min', dp: 1, direction: 'lower-good',
+    extract: r => r.resp_avg_sleep ?? r.sleep_avg_respiration },
+  { key: 'recov',  name: 'Tiempo recuperación', color: '#f79b4f', unit: 'h',     dp: 0, direction: 'lower-good',
+    extract: r => r.tr_recovery_time_min != null ? r.tr_recovery_time_min/60 : null },
+];
+
+function renderEvolution(days) {
+  const container = document.getElementById('evolutionRows');
+  if (!container) return;
+  const rangeRows = HEALTH.slice(-days);
+
+  // Build all row HTML in one pass; canvases drawn after insertion.
+  container.innerHTML = EVOL_PARAMS.map(p => {
+    const series = rangeRows.map(p.extract);
+    const valid  = series.filter(v => v != null && !isNaN(v));
+    if (!valid.length) {
+      return `<div class="spark-row">
+        <div class="name">${p.name}</div>
+        <div class="now">—</div>
+        <div class="canvas-wrap"></div>
+        <div class="delta flat">—</div>
+      </div>`;
+    }
+    const last  = valid[valid.length - 1];
+    const first = valid[0];
+    const d = last - first;
+    let dCls = 'flat';
+    if (Math.abs(d) >= Math.abs(first) * 0.02) {
+      if (p.direction === 'higher-good') dCls = d >= 0 ? 'up' : 'down';
+      else if (p.direction === 'lower-good') dCls = d <= 0 ? 'good-down' : 'bad-up';
+    }
+    const sign = d > 0 ? '+' : '';
+    return `<div class="spark-row" data-key="${p.key}">
+      <div class="name">${p.name}</div>
+      <div class="now">${fmtN(last, p.dp)}<span class="unit">${p.unit}</span></div>
+      <div class="canvas-wrap"><canvas id="spark-${p.key}"></canvas></div>
+      <div class="delta ${dCls}">${dCls === 'flat' ? '—' : `${sign}${d.toFixed(p.dp)}${p.unit}`}</div>
+    </div>`;
+  }).join('');
+
+  // Now draw a sparkline in each canvas.
+  for (const p of EVOL_PARAMS) {
+    const canvas = document.getElementById(`spark-${p.key}`);
+    if (!canvas) continue;
+    const series = rangeRows.map(p.extract);
+    const labels = rangeRows.map(r => r.date);
+    if (sparkCharts[p.key]) sparkCharts[p.key].destroy();
+    sparkCharts[p.key] = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { data: series, borderColor: p.color,
+            backgroundColor: hexToRgba(p.color, 0.18), borderWidth: 1.6,
+            pointRadius: 0, fill: true, tension: 0.3, spanGaps: true },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1a1d27', titleColor: '#e2e4ed', bodyColor: '#e2e4ed',
+            borderColor: '#2a2d3a', borderWidth: 1, displayColors: false,
+            callbacks: {
+              title: items => items[0]?.label || '',
+              label: c => `${fmtN(c.parsed.y, p.dp)}${p.unit}`,
+            },
+          },
+        },
+        interaction: { mode: 'nearest', intersect: false },
+        scales: {
+          x: { display: false },
+          y: { display: false, grace: '5%' },
+        },
+        elements: { line: { capBezierPoints: true } },
+      },
+    });
+  }
+}
+
+function hexToRgba(hex, alpha) {
+  const h = hex.replace('#','');
+  const r = parseInt(h.slice(0,2),16), g = parseInt(h.slice(2,4),16), b = parseInt(h.slice(4,6),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// Wire range buttons.
+document.addEventListener('click', e => {
+  const btn = e.target.closest('#evolRange .range-btn');
+  if (!btn) return;
+  document.querySelectorAll('#evolRange .range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  EVOL_RANGE_DAYS = parseInt(btn.dataset.days, 10) || 30;
+  renderEvolution(EVOL_RANGE_DAYS);
+});
 
 // ── Readiness gauge (semi-circle) ───────────────────────────────────────────
 function drawGauge(score, color) {
