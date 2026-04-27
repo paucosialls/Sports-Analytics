@@ -448,6 +448,11 @@ function renderKcalChart() {
     return { x: d.x, y: Math.round(win.reduce((a,b)=>a+b.y,0)/win.length) };
   });
 
+  // Trend line on daily total kcal — keep {x,y} shape so it lines up with
+  // the time-axis dataset.
+  const trendY = linearTrend(data.map(d => d.y));
+  const trendData = data.map((d, i) => ({ x: d.x, y: trendY[i] }));
+
   if (kcalChart) kcalChart.destroy();
   const ctx = document.getElementById('kcalChart').getContext('2d');
   kcalChart = new Chart(ctx, {
@@ -460,6 +465,8 @@ function renderKcalChart() {
           tension: 0.3, pointRadius: 0, borderWidth: 2 },
         { label: 'BMR', data: bmrData, borderColor: '#6b7080', backgroundColor: 'transparent',
           borderDash: [4,4], tension: 0.2, pointRadius: 0, borderWidth: 1 },
+        { label: 'Trend', data: trendData, borderColor: '#f7c94f', backgroundColor: 'transparent',
+          borderDash: [6,4], tension: 0, pointRadius: 0, borderWidth: 1.5 },
       ]
     },
     options: {
@@ -490,10 +497,20 @@ function renderVolumeChart() {
                    Skiing:'#c9a3f7', Walking:'#7fa8d8', Other:'#6b7080', Paddleboarding:'#f79b4f' };
 
   const datasets = types.map(t => ({
+    type: 'bar',
     label: t,
     data: weeks.map(w => round(byWeekType[w][t] || 0, 1)),
     backgroundColor: colors[t] || '#a0a4b8',
   }));
+  // Trend on total weekly hours.
+  const totalHrs = weeks.map(w => Object.values(byWeekType[w]).reduce((a,b)=>a+b, 0));
+  datasets.push({
+    type: 'line',
+    label: 'Trend (total)',
+    data: linearTrend(totalHrs),
+    borderColor: '#f7c94f', backgroundColor: 'transparent',
+    borderDash: [6,4], tension: 0, pointRadius: 0, borderWidth: 1.5,
+  });
 
   if (volumeChart) volumeChart.destroy();
   const ctx = document.getElementById('volumeChart').getContext('2d');
@@ -654,6 +671,9 @@ function renderFitnessChart(days = 0) {
         { type: 'line', label: 'TSB — Form', data: tsb,
           borderColor: '#4fbd87', borderWidth: 1.6, borderDash: [5, 4],
           fill: false, pointRadius: 0, tension: 0, yAxisID: 'y', order: 3 },
+        { type: 'line', label: 'Fitness trend', data: linearTrend(ctl),
+          borderColor: '#f7c94f', borderWidth: 1.5, borderDash: [6, 4],
+          fill: false, pointRadius: 0, tension: 0, yAxisID: 'y', order: 0 },
       ],
     },
     options: {
@@ -756,6 +776,41 @@ function rolling(arr, win, key) {
     out[i] = n > 0 ? sum / n : null;
   }
   return out;
+}
+
+// Least-squares linear regression on (index, value) pairs; nulls are skipped
+// for the fit but the returned array is the same length as the input,
+// filled with the regression prediction at every position (so it draws as a
+// straight line across the full chart).
+function linearTrend(values) {
+  const pts = [];
+  values.forEach((v, i) => { if (v != null && !isNaN(v) && isFinite(v)) pts.push([i, +v]); });
+  if (pts.length < 2) return values.map(() => null);
+  const n = pts.length;
+  let sx = 0, sy = 0, sxy = 0, sxx = 0;
+  for (const [x, y] of pts) { sx += x; sy += y; sxy += x*y; sxx += x*x; }
+  const denom = n*sxx - sx*sx;
+  if (denom === 0) return values.map(() => sy / n);
+  const slope = (n*sxy - sx*sy) / denom;
+  const intercept = (sy - slope*sx) / n;
+  return values.map((_, i) => slope*i + intercept);
+}
+
+// Standard "Trend" dataset used by all health charts.
+function trendDataset(values, opts = {}) {
+  return {
+    type: 'line',
+    label: 'Trend',
+    data: linearTrend(values),
+    borderColor: opts.color || '#f7c94f',
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderDash: [6, 4],
+    pointRadius: 0,
+    tension: 0,
+    yAxisID: opts.yAxisID,
+    order: 99,  // draw on top
+  };
 }
 function median(arr) {
   const a = arr.filter(v => v != null && !isNaN(v)).sort((x,y) => x-y);
@@ -863,6 +918,7 @@ function renderHrvChart() {
         { label: 'Baseline lower', data: baselineLow, borderColor: 'rgba(255,255,255,0.04)', backgroundColor: 'transparent', fill: false, pointRadius: 0, borderWidth: 0, tension: 0.3 },
         { label: 'Nightly HRV (ms)', data: dots, borderColor: 'rgba(79,207,216,0.6)', backgroundColor: '#4fcfd8', borderWidth: 0, pointRadius: 3, pointHoverRadius: 5, showLine: false },
         { label: '7-day rolling',    data: roll, borderColor: '#4fcfd8', backgroundColor: '#4fcfd8', borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
+        trendDataset(dots),
       ],
     },
     options: defaultHOpts({
@@ -891,6 +947,7 @@ function renderSleepScoreChart() {
       datasets: [
         { label: 'Score', data: scores, borderColor: 'rgba(169,140,245,0.5)', backgroundColor: '#a98cf5', pointRadius: 2.5, showLine: false },
         { label: '7-day avg', data: roll, borderColor: '#a98cf5', borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
+        trendDataset(scores),
       ],
     },
     options: defaultHOpts({
@@ -918,6 +975,7 @@ function renderSleepHoursChart() {
       datasets: [
         { type: 'bar',  label: 'Hours slept', data: hours, backgroundColor: 'rgba(79,142,247,0.55)' },
         { type: 'line', label: '7-day avg',   data: roll,  borderColor: '#f74f8e', borderWidth: 2.5, pointRadius: 0, tension: 0.3 },
+        trendDataset(hours),
       ],
     },
     options: defaultHOpts({
@@ -947,10 +1005,12 @@ function renderSleepStagesChart() {
     data: {
       labels,
       datasets: [
-        { label: 'Deep',  data: deep,  backgroundColor: '#1f4d7a' },
-        { label: 'Light', data: light, backgroundColor: '#4f8ef7' },
-        { label: 'REM',   data: rem,   backgroundColor: '#a98cf5' },
-        { label: 'Awake', data: awake, backgroundColor: 'rgba(247,201,79,0.7)' },
+        { type: 'bar', label: 'Deep',  data: deep,  backgroundColor: '#1f4d7a' },
+        { type: 'bar', label: 'Light', data: light, backgroundColor: '#4f8ef7' },
+        { type: 'bar', label: 'REM',   data: rem,   backgroundColor: '#a98cf5' },
+        { type: 'bar', label: 'Awake', data: awake, backgroundColor: 'rgba(247,201,79,0.7)' },
+        // Trend on total sleep (sum of all stages); drawn as a line on top.
+        trendDataset(data.map(r => r.sleep_total_s != null ? r.sleep_total_s/3600 : null)),
       ],
     },
     options: defaultHOpts({
@@ -982,6 +1042,7 @@ function renderBodyBatteryChart() {
         { type: 'bar',  label: 'Charged', data: charged, backgroundColor: 'rgba(79,189,135,0.6)' },
         { type: 'bar',  label: 'Drained', data: drained, backgroundColor: 'rgba(247,79,142,0.55)' },
         { type: 'line', label: 'Net',     data: net,     borderColor: '#f7c94f', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+        trendDataset(net, { color: '#f79b4f' }),
       ],
     },
     options: defaultHOpts({
@@ -1016,6 +1077,7 @@ function renderTrainingReadinessChart() {
       datasets: [
         { type: 'bar',  label: 'Readiness',     data: score,        backgroundColor: bgs, yAxisID: 'y' },
         { type: 'line', label: 'Recovery (h)',  data: recoveryHrs,  borderColor: '#4fcfd8', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y1' },
+        trendDataset(score, { yAxisID: 'y' }),
       ],
     },
     options: defaultHOpts({
@@ -1045,6 +1107,7 @@ function renderStressChart() {
       datasets: [
         { type: 'bar',  label: 'Daily max',     data: max, backgroundColor: 'rgba(237,94,94,0.25)' },
         { type: 'line', label: 'Daily average', data: avg, borderColor: '#ed5e5e', borderWidth: 2, pointRadius: 0, tension: 0.3 },
+        trendDataset(avg),
       ],
     },
     options: defaultHOpts({
@@ -1075,6 +1138,7 @@ function renderRhrRespChart() {
         { type: 'line', label: 'Resting HR (bpm)',     data: rhr,       borderColor: '#4f8ef7', backgroundColor: 'rgba(79,142,247,0.15)', borderWidth: 2, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
         { type: 'line', label: 'Respiration sleep',    data: respSleep, borderColor: '#a98cf5', borderWidth: 1.5, pointRadius: 0, borderDash: [4,3], tension: 0.3, yAxisID: 'y1' },
         { type: 'line', label: 'Respiration awake',    data: respWake,  borderColor: '#4fcfd8', borderWidth: 1.5, pointRadius: 0, borderDash: [4,3], tension: 0.3, yAxisID: 'y1' },
+        trendDataset(rhr, { yAxisID: 'y' }),
       ],
     },
     options: defaultHOpts({
