@@ -13,6 +13,14 @@ LOG="$LOG_DIR/daily.log"
 echo "" >> "$LOG"
 echo "======== $(date '+%Y-%m-%d %H:%M:%S %Z') ========" >> "$LOG"
 
+# Pull credentials from .env (GARMIN_*, GH_TOKEN). cron has no GH_TOKEN
+# in its env, so we need to source it here for the final git push step.
+if [ -f .env ]; then
+  set -a
+  source .env
+  set +a
+fi
+
 source venv/bin/activate
 
 run_step() {

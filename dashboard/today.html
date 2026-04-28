@@ -38,6 +38,20 @@
   header nav a { color: var(--muted); font-size: .85rem; text-decoration: none; padding: 6px 12px; border-radius: 6px; border: 1px solid var(--border); }
   header nav a.active { color: var(--accent); border-color: var(--accent); }
 
+  /* Refresh button in header */
+  #refreshBtn {
+    background: var(--surface); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 12px; font-size: .82rem; font-weight: 600;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+  }
+  #refreshBtn:hover { color: var(--accent); border-color: var(--accent); }
+  #refreshBtn:disabled { opacity: .6; cursor: progress; }
+  #refreshBtn .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); }
+  #refreshBtn .dot.busy { background: var(--yellow); animation: pulse 1.2s infinite; }
+  #refreshBtn .dot.error { background: var(--pink); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  #refreshMsg { color: var(--muted); font-size: .78rem; margin-left: 8px; }
+
   main { padding: 24px 20px; max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 
   /* Hero readiness card */
@@ -181,6 +195,10 @@
     <a href="self.html">Understanding Myself</a>
     <a href="index.html">Activities</a>
   </nav>
+  <button id="refreshBtn" type="button" title="Fetch fresh Garmin data">
+    <span class="dot" id="refreshDot"></span><span id="refreshLabel">Refresh data</span>
+  </button>
+  <span id="refreshMsg"></span>
 </header>
 
 <main id="root">
@@ -638,6 +656,89 @@ function drawTrendStripTSS() {
 }
 
 render();
+
+// ── Refresh button ─────────────────────────────────────────────────────────
+const refreshBtn = document.getElementById('refreshBtn');
+const refreshDot = document.getElementById('refreshDot');
+const refreshLabel = document.getElementById('refreshLabel');
+const refreshMsg = document.getElementById('refreshMsg');
+let pollTimer = null;
+
+function setBusy(busy) {
+  refreshBtn.disabled = busy;
+  refreshDot.classList.toggle('busy', busy);
+  refreshLabel.textContent = busy ? 'Fetching…' : 'Refresh data';
+}
+function setError() {
+  refreshDot.classList.remove('busy');
+  refreshDot.classList.add('error');
+}
+
+function fmtAge(epoch) {
+  if (!epoch) return '';
+  const sec = Math.max(0, Math.floor(Date.now()/1000 - epoch));
+  if (sec < 60) return `${sec} s ago`;
+  const m = Math.floor(sec/60);
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m/60);
+  if (h < 24) return `${h} h ago`;
+  return `${Math.floor(h/24)} d ago`;
+}
+
+async function fetchStatus() {
+  try {
+    const r = await fetch('/refresh/status', { cache: 'no-store' });
+    const s = await r.json();
+    setBusy(!!s.running);
+    if (s.running) {
+      refreshMsg.textContent = `running (started ${fmtAge(s.started_at)})`;
+    } else if (s.exit_code === 0) {
+      refreshMsg.textContent = `last sync ${fmtAge(s.finished_at)} · auto-reload page when done`;
+    } else if (s.exit_code != null && s.exit_code !== 0) {
+      refreshMsg.textContent = `last sync failed (exit ${s.exit_code})`;
+      setError();
+    } else if (s.finished_at) {
+      refreshMsg.textContent = `last sync ${fmtAge(s.finished_at)}`;
+    } else {
+      refreshMsg.textContent = '';
+    }
+    return s;
+  } catch (e) {
+    refreshMsg.textContent = 'status unreachable';
+    return null;
+  }
+}
+
+async function startRefresh() {
+  setBusy(true);
+  refreshMsg.textContent = 'kicking off fetch…';
+  try {
+    const r = await fetch('/refresh', { method: 'POST' });
+    const s = await r.json();
+    if (r.status === 409) {
+      refreshMsg.textContent = `already running (started ${fmtAge(s.started_at)})`;
+    }
+  } catch (e) {
+    refreshMsg.textContent = 'failed to start';
+    setError();
+    return;
+  }
+  // Poll until finished, then reload to pick up the new data files.
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    const s = await fetchStatus();
+    if (s && !s.running) {
+      clearInterval(pollTimer); pollTimer = null;
+      if (s.exit_code === 0) {
+        // Cache-bust JS files by reloading.
+        setTimeout(() => location.reload(), 800);
+      }
+    }
+  }, 2000);
+}
+
+refreshBtn.addEventListener('click', startRefresh);
+fetchStatus();
 </script>
 
 </body>

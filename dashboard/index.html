@@ -193,11 +193,23 @@
   <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
   <h1>Sports Analytics</h1>
   <span id="header-sub">Loading…</span>
-  <nav style="margin-left:auto;display:flex;gap:6px;">
+  <nav style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
     <a href="today.html" style="color:var(--muted);text-decoration:none;font-size:.85rem;padding:6px 12px;border:1px solid var(--border);border-radius:6px;">Today</a>
     <a href="self.html" style="color:var(--muted);text-decoration:none;font-size:.85rem;padding:6px 12px;border:1px solid var(--border);border-radius:6px;">Understanding Myself</a>
     <a href="index.html" style="color:var(--accent);text-decoration:none;font-size:.85rem;padding:6px 12px;border:1px solid var(--accent);border-radius:6px;">Activities</a>
+    <button id="refreshBtn" type="button" title="Fetch fresh Garmin data" style="background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 12px;font-size:.82rem;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;">
+      <span id="refreshDot" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);"></span>
+      <span id="refreshLabel">Refresh data</span>
+    </button>
+    <span id="refreshMsg" style="color:var(--muted);font-size:.78rem;"></span>
   </nav>
+  <style>
+    @keyframes pulse-rfsh { 0%,100%{opacity:1} 50%{opacity:.4} }
+    #refreshDot.busy  { background: var(--yellow) !important; animation: pulse-rfsh 1.2s infinite; }
+    #refreshDot.error { background: var(--accent2) !important; }
+    #refreshBtn:hover { color: var(--accent) !important; border-color: var(--accent) !important; }
+    #refreshBtn:disabled { opacity: .6; cursor: progress; }
+  </style>
 </header>
 
 <!-- Cycling power & HR trend (top, full width) -->
@@ -1154,6 +1166,60 @@ function monthlyMean(points) {
 }
 
 renderCyclingTrend();
+
+// ── Refresh button ─────────────────────────────────────────────────────────
+(function () {
+  const btn = document.getElementById('refreshBtn');
+  if (!btn) return;
+  const dot = document.getElementById('refreshDot');
+  const label = document.getElementById('refreshLabel');
+  const msg = document.getElementById('refreshMsg');
+  let timer = null;
+
+  function setBusy(b) {
+    btn.disabled = b;
+    dot.classList.toggle('busy', b);
+    label.textContent = b ? 'Fetching…' : 'Refresh data';
+  }
+  function fmtAge(epoch) {
+    if (!epoch) return '';
+    const sec = Math.max(0, Math.floor(Date.now()/1000 - epoch));
+    if (sec < 60) return sec + ' s ago';
+    const m = Math.floor(sec/60); if (m < 60) return m + ' min ago';
+    const h = Math.floor(m/60); if (h < 24) return h + ' h ago';
+    return Math.floor(h/24) + ' d ago';
+  }
+  async function status() {
+    try {
+      const r = await fetch('/refresh/status', { cache: 'no-store' });
+      const s = await r.json();
+      setBusy(!!s.running);
+      if (s.running) msg.textContent = `running (started ${fmtAge(s.started_at)})`;
+      else if (s.exit_code === 0) msg.textContent = `last sync ${fmtAge(s.finished_at)}`;
+      else if (s.exit_code != null) { msg.textContent = `last sync failed (exit ${s.exit_code})`; dot.classList.add('error'); }
+      else if (s.finished_at) msg.textContent = `last sync ${fmtAge(s.finished_at)}`;
+      else msg.textContent = '';
+      return s;
+    } catch (e) { msg.textContent = 'status unreachable'; return null; }
+  }
+  btn.addEventListener('click', async () => {
+    setBusy(true); msg.textContent = 'kicking off fetch…';
+    try {
+      const r = await fetch('/refresh', { method: 'POST' });
+      const s = await r.json();
+      if (r.status === 409) msg.textContent = `already running (started ${fmtAge(s.started_at)})`;
+    } catch (e) { msg.textContent = 'failed to start'; dot.classList.add('error'); return; }
+    if (timer) clearInterval(timer);
+    timer = setInterval(async () => {
+      const s = await status();
+      if (s && !s.running) {
+        clearInterval(timer); timer = null;
+        if (s.exit_code === 0) setTimeout(() => location.reload(), 800);
+      }
+    }, 2000);
+  });
+  status();
+})();
 </script>
 
 </body>
