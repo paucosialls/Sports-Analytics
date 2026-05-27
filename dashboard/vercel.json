@@ -1,8 +1,5 @@
 {
   "framework": null,
-  "installCommand": "echo 'skip install'",
-  "buildCommand": "npm run build",
-  "outputDirectory": ".vercel-public",
   "cleanUrls": true,
   "rewrites": [
     { "source": "/", "destination": "/self.html" }

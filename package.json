@@ -1,9 +1,0 @@
-{
-  "name": "sports-analytics-dashboard",
-  "private": true,
-  "version": "1.0.0",
-  "description": "Static dashboard for Garmin data, deployed on Vercel",
-  "scripts": {
-    "build": "mkdir -p .vercel-public && cp -r dashboard/. .vercel-public/"
-  }
-}
