@@ -1,6 +1,7 @@
 {
   "framework": null,
-  "buildCommand": "mkdir -p .vercel-public && cp -r dashboard/. .vercel-public/",
+  "installCommand": "echo 'skip install'",
+  "buildCommand": "npm run build",
   "outputDirectory": ".vercel-public",
   "cleanUrls": true,
   "rewrites": [
