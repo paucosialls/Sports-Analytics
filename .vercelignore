@@ -1,0 +1,15 @@
+venv/
+data/
+logs/
+notebooks/
+out/
+src/
+*.pyc
+__pycache__/
+.env
+*.ipynb_checkpoints
+README.md
+requirements.txt
+daily_sync.sh
+dashboard_server.py
+user_profile.json

@@ -1,0 +1,9 @@
+{
+  "framework": null,
+  "buildCommand": "mkdir -p .vercel-public && cp -r dashboard/. .vercel-public/",
+  "outputDirectory": ".vercel-public",
+  "cleanUrls": true,
+  "rewrites": [
+    { "source": "/", "destination": "/self.html" }
+  ]
+}

@@ -12,3 +12,6 @@ data/processed/daily_stats.csv
 data/processed/health_raw/
 data/processed/health_fetched.json
 data/processed/health_daily.csv
+.vercel-public/
+.vercel/
+node_modules/
