@@ -182,20 +182,25 @@ def _row_for_date(api: Garmin, d: str, raw_dump: dict[str, Any]) -> dict[str, An
         row["resp_lowest"] = resp.get("lowestRespirationValue")
         row["resp_highest"] = resp.get("highestRespirationValue")
 
-    # Training readiness — most recent reading for the day.
+    # Training readiness — earliest reading of the day (post-sleep morning
+    # value). Garmin updates the score throughout the day as you train and
+    # accumulate stress, but the morning value is what matters for planning
+    # the day's session. The API returns readings newest-first, so we sort
+    # by local timestamp ascending and take the first one.
     tr = safe(api.get_training_readiness, d)
     raw_dump["training_readiness"] = tr
     if tr and isinstance(tr, list) and tr:
-        latest = tr[0]
-        row["tr_score"] = latest.get("score")
-        row["tr_level"] = latest.get("level")
-        row["tr_feedback"] = latest.get("feedbackLong")
-        row["tr_sleep_score"] = latest.get("sleepScore")
-        row["tr_recovery_time_min"] = latest.get("recoveryTime")
-        row["tr_hrv_weekly_avg"] = latest.get("hrvWeeklyAverage")
-        row["tr_hrv_status"] = latest.get("hrvStatus")
-        row["tr_acute_load"] = latest.get("acuteLoad")
-        row["tr_inputs_present"] = ",".join(latest.get("inputContext", {}).keys()) if isinstance(latest.get("inputContext"), dict) else None
+        sorted_tr = sorted(tr, key=lambda x: (x or {}).get("timestampLocal") or "")
+        morning = sorted_tr[0]
+        row["tr_score"] = morning.get("score")
+        row["tr_level"] = morning.get("level")
+        row["tr_feedback"] = morning.get("feedbackLong")
+        row["tr_sleep_score"] = morning.get("sleepScore")
+        row["tr_recovery_time_min"] = morning.get("recoveryTime")
+        row["tr_hrv_weekly_avg"] = morning.get("hrvWeeklyAverage")
+        row["tr_hrv_status"] = morning.get("hrvStatus")
+        row["tr_acute_load"] = morning.get("acuteLoad")
+        row["tr_inputs_present"] = ",".join(morning.get("inputContext", {}).keys()) if isinstance(morning.get("inputContext"), dict) else None
 
     # Training status — VO2 max + ACWR. Only fetch for the most recent day,
     # since the endpoint reports current state, not historical.
