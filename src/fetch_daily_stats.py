@@ -40,6 +40,11 @@ DELAY = 0.6          # seconds between requests
 PAGE_DELAY = 1.5
 MAX_RETRIES = 3
 RETRY_DELAY = 10.0
+# Always re-fetch the most recent N days each run. Garmin's daily stats
+# (especially bmrKilocalories) only reach their final value once the day is
+# complete — if we fetched mid-day, we'd otherwise be stuck with a partial
+# value forever. 7 days covers any timezone weirdness and late watch syncs.
+RECHECK_RECENT_DAYS = int(os.getenv("STATS_RECHECK_RECENT_DAYS", "7"))
 
 logging.basicConfig(
     level=logging.INFO,
@@ -182,10 +187,14 @@ def main():
     end = date.today()
     all_days = list(daterange(start, end))
     existing = load_existing()
-    missing = [d for d in all_days if d.isoformat() not in existing]
+    # Always re-fetch the last RECHECK_RECENT_DAYS so we capture the final
+    # full-day BMR once the day completes.
+    recheck_cutoff = end - timedelta(days=RECHECK_RECENT_DAYS - 1)
+    missing = [d for d in all_days
+               if d.isoformat() not in existing or d >= recheck_cutoff]
 
-    log.info("Range: %s → %s (%d days).  Already fetched: %d.  To fetch: %d.",
-             start, end, len(all_days), len(existing), len(missing))
+    log.info("Range: %s → %s (%d days).  Already fetched: %d.  Recheck cutoff: %s.  To fetch: %d.",
+             start, end, len(all_days), len(existing), recheck_cutoff, len(missing))
 
     if not missing:
         log.info("All days up to date.")
