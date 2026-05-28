@@ -3,5 +3,13 @@
   "cleanUrls": true,
   "rewrites": [
     { "source": "/", "destination": "/self.html" }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, must-revalidate" }
+      ]
+    }
   ]
 }
