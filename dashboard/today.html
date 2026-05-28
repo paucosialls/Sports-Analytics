@@ -74,10 +74,57 @@
   .hero-text .verdict { color: var(--text); font-size: 1rem; line-height: 1.5; }
   .hero-text .verdict strong { color: var(--text); }
   .hero-text .recommend {
-    margin-top: 16px; padding: 12px 14px; border-radius: 12px;
-    background: var(--surface2); color: var(--text); font-size: .92rem; line-height: 1.45;
+    margin-top: 16px; padding: 12px 16px; border-radius: 12px;
+    background: var(--surface2); color: var(--text); font-size: .92rem; line-height: 1.5;
     border-left: 3px solid var(--accent);
   }
+  .hero-text .recommend .rec-head { font-size: 1rem; margin-bottom: 8px; }
+  .hero-text .recommend .rec-body ul { margin: 4px 0 0; padding-left: 18px; }
+  .hero-text .recommend .rec-body li { margin: 4px 0; }
+  .hero-text .recommend .rec-body strong { color: var(--text); }
+  .hero-text .recommend .rec-notes {
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+    font-size: .85rem; color: var(--muted);
+  }
+  .hero-text .recommend .rec-notes div { margin: 4px 0; }
+
+  /* Form status section */
+  .form-status {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 16px 18px;
+  }
+  .form-status .head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  .form-status .title { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+  .form-status .stat { color: var(--text); font-size: .82rem; font-variant-numeric: tabular-nums; }
+  .form-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+    margin-bottom: 14px;
+  }
+  .form-cell {
+    background: var(--surface2); border-radius: 10px; padding: 12px 10px;
+    display: flex; flex-direction: column; gap: 4px; align-items: center;
+    text-align: center;
+  }
+  .form-cell .cell-label { color: var(--muted); font-size: .72rem; }
+  .form-cell .cell-value { font-size: 1.8rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .form-cell .cell-trend { font-size: .68rem; font-weight: 700; letter-spacing: .04em; padding: 2px 8px; border-radius: 4px; }
+  .form-cell .cell-trend.good { background: rgba(79,189,135,0.18); color: var(--green); }
+  .form-cell .cell-trend.ok   { background: rgba(247,201,79,0.18); color: var(--yellow); }
+  .form-cell .cell-trend.warn { background: rgba(247,155,79,0.22); color: #f7c94f; }
+  .form-cell .cell-trend.bad  { background: rgba(247,79,142,0.18); color: var(--pink); }
+  .form-narr {
+    display: flex; flex-direction: column; gap: 8px;
+    font-size: .9rem; line-height: 1.5; color: var(--text);
+  }
+  .form-narr .line { display: flex; align-items: flex-start; gap: 10px; }
+  .form-narr .bullet {
+    flex-shrink: 0; width: 8px; height: 8px; border-radius: 50%; margin-top: 7px;
+  }
+  .form-narr .bullet.good { background: var(--green); }
+  .form-narr .bullet.ok   { background: var(--yellow); }
+  .form-narr .bullet.warn { background: #f79b4f; }
+  .form-narr .bullet.bad  { background: var(--pink); }
+  .form-narr strong { color: var(--text); }
 
   /* Pillars row */
   .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -205,6 +252,8 @@
     .pillars { grid-template-columns: 1fr; }
     .compare .row { grid-template-columns: 1.2fr 1fr 0.8fr; }
     .compare .row .base { display: none; }
+    .form-cell .cell-value { font-size: 1.5rem; }
+    .form-cell .cell-trend { font-size: .62rem; padding: 2px 6px; }
   }
 </style>
 </head>
@@ -344,16 +393,173 @@ function pickVerdict() {
 
 function pickRecommendation() {
   if (tr == null) return 'Carga la última sincronización del Garmin para ver una recomendación.';
-  if (tr >= 80 && (tsbToday == null || tsbToday >= -5)) {
-    return '🟢 Día ideal para una sesión <strong>dura</strong>: intervalos VO₂, salida larga con tramos a tope, o fuerza pesada.';
+
+  // Pick a recommendation tier from readiness + TSB. The tiers offer a menu
+  // of 3-4 session options, plus a short "consideraciones" note. We add
+  // sleep-debt and HRV warnings dynamically below.
+  let tier;
+  if (tr >= 80 && (tsbToday == null || tsbToday >= -8)) {
+    tier = {
+      headline: '🟢 Día ideal para una <strong>sesión dura</strong>.',
+      body: `
+        <ul>
+          <li><strong>Salida larga (3-4h)</strong> con 2-3 esfuerzos de 10-15 min en Z3/Z4 — acumula volumen aprovechando la frescura.</li>
+          <li><strong>Intervalos VO₂ (~60 min)</strong>: 5×4 min en Z5, 4 min Z2 entre series. Corto y muy productivo.</li>
+          <li><strong>Sweet-spot (~75 min)</strong>: 2×20 min Z3 alto, 5 min recovery. Construye sin enterrar.</li>
+          <li><strong>Fuerza pesada</strong> si toca: prioriza piernas, baja series si entrenas en bici mañana.</li>
+        </ul>
+      `
+    };
+  } else if (tr >= 65) {
+    tier = {
+      headline: '🟡 Sesión <strong>moderada</strong> bien tolerada.',
+      body: `
+        <ul>
+          <li><strong>Z2 largo (2-3h)</strong> — el objetivo es sumar tiempo en aeróbico bajo sin acumular fatiga aguda.</li>
+          <li><strong>Sweet-spot moderado (~60 min)</strong>: 2×15 min Z3 con 5 min recovery. Salta esto si el ATL ya está alto.</li>
+          <li><strong>Técnica / habilidades</strong>: salida MTB técnica corta o ciclocross sin obsesionarte con la FC.</li>
+          <li>Sin esfuerzos máximos ni atacar pendientes; deja un margen para mañana.</li>
+        </ul>
+      `
+    };
+  } else if (tr >= 45) {
+    tier = {
+      headline: '🟠 Mejor <strong>fácil</strong> hoy.',
+      body: `
+        <ul>
+          <li><strong>Rodaje Z2 corto (60-90 min)</strong> sin pendientes largas. FC siempre conversacional.</li>
+          <li><strong>Paseo activo / hiking suave</strong> 60-90 min si no apetece bici.</li>
+          <li><strong>Movilidad + core 30-40 min</strong> alternativa si el cuerpo manda.</li>
+          <li>Evita intensidad por completo. Mejor descansar que forzar una sesión mediocre.</li>
+        </ul>
+      `
+    };
+  } else {
+    tier = {
+      headline: '🔴 <strong>Día de recuperación</strong>.',
+      body: `
+        <ul>
+          <li><strong>Descanso completo</strong> es la opción óptima.</li>
+          <li>Si necesitas moverte: <strong>paseo 30-45 min</strong> o movilidad suave, nada más.</li>
+          <li>Prioriza <strong>sueño 8h+</strong> esta noche y comida con buena densidad nutricional.</li>
+          <li>Manana el HRV y readiness dirán si has absorbido — paciencia.</li>
+        </ul>
+      `
+    };
   }
-  if (tr >= 65) {
-    return '🟡 Sesión <strong>moderada</strong> bien tolerada: zona 2 larga, sweet-spot moderado, o técnica.';
+
+  // Dynamic warnings appended at the bottom regardless of tier.
+  const notes = [];
+  const sleepH = ssH != null ? ssH/3600 : null;
+  if (sleepH != null && sleepH < 6.5) {
+    notes.push(`⚠️ Sueño corto (${sleepH.toFixed(1)}h) — si bajas el nivel previsto un escalón, sin remordimiento.`);
   }
-  if (tr >= 45) {
-    return '🟠 Mejor <strong>fácil</strong>: rodaje suave en Z2, paseo, o sesión técnica corta. Evita intensidad.';
+  if (hrv != null && baseHRV != null && hrv < baseHRV - 5) {
+    notes.push(`⚠️ HRV por debajo de tu media — escucha sensaciones los primeros 15 min.`);
   }
-  return '🔴 <strong>Recupera</strong>. Día de descanso completo o sólo movilidad / paseo. Prioriza sueño y comida.';
+  if (tsbToday != null && tsbToday < -20) {
+    notes.push(`⚠️ TSB muy negativo (${tsbToday.toFixed(0)}) — estás en zona de sobrecarga. Considera bajar un escalón aunque la readiness diga lo contrario.`);
+  }
+  if (tsbToday != null && tsbToday > 15) {
+    notes.push(`🎯 TSB +${tsbToday.toFixed(0)} — estás muy fresco. Si tienes una cita importante (cursa, test) en los próximos días, hoy puedes empujar fuerte.`);
+  }
+
+  return `
+    <div class="rec-head">${tier.headline}</div>
+    <div class="rec-body">${tier.body}</div>
+    ${notes.length ? `<div class="rec-notes">${notes.map(n => `<div>${n}</div>`).join('')}</div>` : ''}
+  `;
+}
+
+// ── Form status: explain CTL/ATL/TSB and the recent trend ──────────────────
+function composeFormStatus() {
+  if (!FITNESS || !FITNESS.daily || !FITNESS.daily.length) return '';
+  const daily = FITNESS.daily;
+  const last = daily[daily.length - 1];
+  const ctlNow = last.ctl, atlNow = last.atl, tsbNow = last.tsb;
+
+  // Trend windows. Find rows ~7d and ~28d ago by index.
+  const idx7  = Math.max(0, daily.length - 1 - 7);
+  const idx28 = Math.max(0, daily.length - 1 - 28);
+  const ctl7  = daily[idx7].ctl;
+  const ctl28 = daily[idx28].ctl;
+  const dCtl7  = ctlNow - ctl7;
+  const dCtl28 = ctlNow - ctl28;
+
+  // Last-7-day TSS sum.
+  const last7 = daily.slice(-7);
+  const tss7 = last7.reduce((a,b) => a + (b.tss || 0), 0);
+  const avgTss = tss7 / 7;
+
+  // Build the narrative.
+  const trendCtl = (() => {
+    if (dCtl7 >= 1.5) return { tag: 'CONSTRUYENDO', cls: 'good',
+      text: `CTL <strong>+${dCtl7.toFixed(1)}</strong> en 7 días, <strong>+${dCtl28.toFixed(1)}</strong> en 28d. Forma de fondo en progresión sólida.` };
+    if (dCtl7 >= 0.3) return { tag: 'CONSTRUCCIÓN SUAVE', cls: 'good',
+      text: `CTL <strong>+${dCtl7.toFixed(1)}</strong> en 7d. Subiendo lentamente; mantén la carga para que se note más.` };
+    if (dCtl7 >= -0.5) return { tag: 'MANTENIMIENTO', cls: 'ok',
+      text: `CTL prácticamente estable (Δ ${dCtl7.toFixed(1)}). Estás manteniendo nivel, no construyendo.` };
+    if (dCtl7 >= -2) return { tag: 'BAJANDO', cls: 'warn',
+      text: `CTL <strong>${dCtl7.toFixed(1)}</strong> esta semana. Pérdida controlada (puede ser un taper deliberado o falta de volumen).` };
+    return { tag: 'DETRAINING', cls: 'bad',
+      text: `CTL <strong>${dCtl7.toFixed(1)}</strong> en 7 días — pérdida notable de forma. Si no es taper intencionado, sube volumen suave.` };
+  })();
+
+  const trendAtl = (() => {
+    const ratio = ctlNow > 0 ? atlNow / ctlNow : 1;
+    if (ratio > 1.3) return { tag: 'ALTA', cls: 'warn',
+      text: `Carga aguda ${(ratio*100-100).toFixed(0)}% por encima de la crónica — asimilando un bloque exigente. No añadas más esta semana.` };
+    if (ratio > 1.05) return { tag: 'POR ENCIMA', cls: 'ok',
+      text: `Carga aguda ligeramente sobre la crónica — bloque productivo, dentro del rango sostenible.` };
+    if (ratio > 0.85) return { tag: 'EQUILIBRADA', cls: 'good',
+      text: `Carga aguda alineada con la crónica — situación equilibrada, puedes mantener el ritmo.` };
+    return { tag: 'BAJA', cls: 'ok',
+      text: `Carga aguda baja vs crónica — estás frescos. Si llevas días así sin querer, sube volumen.` };
+  })();
+
+  const trendTsb = (() => {
+    if (tsbNow >= 15) return { tag: 'PICO', cls: 'good',
+      text: `TSB +${tsbNow.toFixed(0)} — máxima frescura. Ventana ideal de competición o test.` };
+    if (tsbNow >= 5)  return { tag: 'FRESCO', cls: 'good',
+      text: `TSB +${tsbNow.toFixed(0)} — bien recuperado, puedes empujar fuerte.` };
+    if (tsbNow >= -10) return { tag: 'NEUTRO', cls: 'ok',
+      text: `TSB ${tsbNow.toFixed(0)} — zona de carga productiva, ni fresco ni quemado.` };
+    if (tsbNow >= -25) return { tag: 'FATIGA', cls: 'warn',
+      text: `TSB ${tsbNow.toFixed(0)} — fatiga acumulada. 1-2 días suaves antes de un bloque nuevo.` };
+    return { tag: 'SOBRECARGA', cls: 'bad',
+      text: `TSB ${tsbNow.toFixed(0)} — riesgo de sobrecarga. Para y deja que el ATL baje antes de seguir.` };
+  })();
+
+  return `
+    <section class="form-status">
+      <div class="head">
+        <span class="title">Estado de forma</span>
+        <span class="stat">últimos 7d: ${Math.round(tss7)} TSS (${Math.round(avgTss)}/día)</span>
+      </div>
+      <div class="form-grid">
+        <div class="form-cell">
+          <div class="cell-label">Fitness · CTL</div>
+          <div class="cell-value">${ctlNow.toFixed(0)}</div>
+          <div class="cell-trend ${trendCtl.cls}">${trendCtl.tag}</div>
+        </div>
+        <div class="form-cell">
+          <div class="cell-label">Fatiga · ATL</div>
+          <div class="cell-value">${atlNow.toFixed(0)}</div>
+          <div class="cell-trend ${trendAtl.cls}">${trendAtl.tag}</div>
+        </div>
+        <div class="form-cell">
+          <div class="cell-label">Forma · TSB</div>
+          <div class="cell-value">${tsbNow >= 0 ? '+' : ''}${tsbNow.toFixed(0)}</div>
+          <div class="cell-trend ${trendTsb.cls}">${trendTsb.tag}</div>
+        </div>
+      </div>
+      <div class="form-narr">
+        <div class="line"><span class="bullet good"></span>${trendCtl.text}</div>
+        <div class="line"><span class="bullet ok"></span>${trendAtl.text}</div>
+        <div class="line"><span class="bullet warn"></span>${trendTsb.text}</div>
+      </div>
+    </section>
+  `;
 }
 
 // ── Render: hero ────────────────────────────────────────────────────────────
@@ -391,6 +597,8 @@ function render() {
       ${compareRow('Estrés medio',     stressAvg, baseStress, '',    0, 'lower-good')}
       ${compareRow('Respiración nocturna', respSleep, baseRespSleep, ' br/min', 1, 'lower-good')}
     </section>
+
+    ${composeFormStatus()}
 
     <section class="evolution">
       <div class="head">
