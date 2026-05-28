@@ -47,7 +47,7 @@ echo "--- git_push ---" >> "$LOG"
 {
   git add dashboard/activities.js dashboard/cadence_activities.js \
           dashboard/cycling_activities.js dashboard/daily_stats.js \
-          dashboard/fitness.js 2>/dev/null
+          dashboard/fitness.js dashboard/health.js 2>/dev/null
   if ! git diff --cached --quiet; then
     git commit -m "Daily data sync $(date '+%Y-%m-%d')" \
       && git push
