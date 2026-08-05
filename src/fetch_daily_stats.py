@@ -33,7 +33,7 @@ load_dotenv()
 ROOT = Path(__file__).parent.parent
 OUT_CSV = ROOT / "data" / "processed" / "daily_stats.csv"
 OUT_JS  = ROOT / "dashboard" / "daily_stats.js"
-TOKEN_STORE = Path.home() / ".garth"
+TOKEN_STORE = Path.home() / ".garminconnect"
 ACTIVITIES_CSV = ROOT / "data" / "processed" / "activities.csv"
 
 DELAY = 0.6          # seconds between requests
@@ -86,21 +86,13 @@ def connect() -> Garmin:
         log.error("GARMIN_EMAIL / GARMIN_PASSWORD not set.")
         sys.exit(1)
     api = Garmin(email, password)
-    if TOKEN_STORE.exists():
-        try:
-            log.info("Resuming Garmin session from %s", TOKEN_STORE)
-            api.login(str(TOKEN_STORE))
-            return api
-        except Exception:
-            log.info("Cached session expired — fresh login.")
+    TOKEN_STORE.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, 4):
         try:
-            api.login()
-            TOKEN_STORE.mkdir(parents=True, exist_ok=True)
-            api.garth.dump(str(TOKEN_STORE))
-            log.info("Login ok; session cached.")
+            api.login(str(TOKEN_STORE))
+            log.info("Garmin session ready from %s", TOKEN_STORE)
             return api
-        except GarthHTTPError as e:
+        except Exception as e:
             if "429" in str(e) and attempt < 3:
                 wait = 30 * attempt
                 log.warning("429 — backing off %ds", wait)
@@ -108,9 +100,6 @@ def connect() -> Garmin:
             else:
                 log.error("Login failed: %s", e)
                 sys.exit(1)
-        except GarminConnectAuthenticationError as e:
-            log.error("Auth failed: %s", e)
-            sys.exit(1)
 
 
 def load_existing() -> set[str]:

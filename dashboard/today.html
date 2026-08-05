@@ -125,6 +125,16 @@
   .form-narr .bullet.warn { background: #f79b4f; }
   .form-narr .bullet.bad  { background: var(--pink); }
   .form-narr strong { color: var(--text); }
+  .form-chart-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 16px 0 8px; }
+  .form-chart-head .chart-title { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+  .form-chart-head .range-bar { display: flex; gap: 6px; }
+  .form-chart-head .range-btn {
+    background: var(--bg); color: var(--muted); border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 10px; font-size: .72rem; font-weight: 600; cursor: pointer;
+  }
+  .form-chart-head .range-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .form-chart-wrap { position: relative; height: 220px; }
+  .form-chart-wrap canvas { width: 100% !important; height: 100% !important; }
 
   /* Pillars row */
   .pillars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
@@ -219,7 +229,7 @@
   .trend7 .title { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
   .trend7 .stat { color: var(--text); font-size: .82rem; font-variant-numeric: tabular-nums; }
   .trend7 .bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 100px; }
-  .trend7 .bar-col { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+  .trend7 .bar-col { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; min-width: 0; }
   .trend7 .bar  {
     flex-shrink: 0; border-radius: 6px 6px 0 0; min-height: 4px;
     transition: height .2s; cursor: pointer;
@@ -234,6 +244,7 @@
   }
   .trend7 .bar-val.empty {
     color: var(--muted); font-weight: 400; text-shadow: none;
+    padding: 0; /* Do not inherit the full-card `.empty` placeholder padding. */
   }
   .trend7 .day-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 6px; }
   .trend7 .day { color: var(--muted); font-size: .68rem; text-align: center; }
@@ -324,6 +335,17 @@ function getCss(name) {
 // ── Today's snapshot ────────────────────────────────────────────────────────
 const today = HEALTH[HEALTH.length-1] || {};
 const yest  = HEALTH[HEALTH.length-2] || {};
+const latestFitness = FITNESS?.daily?.length ? FITNESS.daily[FITNESS.daily.length - 1] : null;
+const chartEndDate = [today.date, latestFitness?.date].filter(Boolean).sort().at(-1);
+
+function calendarDates(endDate, days) {
+  const end = new Date(`${endDate}T12:00:00`);
+  return Array.from({length: days}, (_, i) => {
+    const d = new Date(end);
+    d.setDate(end.getDate() - (days - 1 - i));
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  });
+}
 
 // 30-day baselines (excluding today so deltas are meaningful)
 const last30 = HEALTH.slice(-31, -1);
@@ -353,10 +375,11 @@ const respSleep = today.resp_avg_sleep ?? today.sleep_avg_respiration ?? yest.re
 const rhr     = (STATS_BY_DATE[today.date]||{}).restingHeartRate
              || (STATS_BY_DATE[yest.date]||{}).restingHeartRate;
 
-const fit = FITNESS_BY_DATE[today.date] || FITNESS_BY_DATE[yest.date] || null;
+const fit = latestFitness || FITNESS_BY_DATE[today.date] || FITNESS_BY_DATE[yest.date] || null;
 const tsbToday = fit ? fit.tsb : null;
 const ctlToday = fit ? fit.ctl : null;
-const tssYesterday = (FITNESS_BY_DATE[yest.date] || {}).tss;
+const previousCalendarDate = calendarDates(chartEndDate, 2)[0];
+const tssYesterday = (FITNESS_BY_DATE[previousCalendarDate] || {}).tss;
 
 // ── Greeting & verdict ──────────────────────────────────────────────────────
 const greet = (() => {
@@ -492,6 +515,7 @@ function composeFormStatus() {
   const avgTss = tss7 / 7;
 
   // Build the narrative.
+  const recentHardLoad = last7.some(d => (d.tss || 0) >= 80);
   const trendCtl = (() => {
     if (dCtl7 >= 1.5) return { tag: 'CONSTRUYENDO', cls: 'good',
       text: `CTL <strong>+${dCtl7.toFixed(1)}</strong> en 7 días, <strong>+${dCtl28.toFixed(1)}</strong> en 28d. Forma de fondo en progresión sólida.` };
@@ -501,8 +525,10 @@ function composeFormStatus() {
       text: `CTL prácticamente estable (Δ ${dCtl7.toFixed(1)}). Estás manteniendo nivel, no construyendo.` };
     if (dCtl7 >= -2) return { tag: 'BAJANDO', cls: 'warn',
       text: `CTL <strong>${dCtl7.toFixed(1)}</strong> esta semana. Pérdida controlada (puede ser un taper deliberado o falta de volumen).` };
-    return { tag: 'DETRAINING', cls: 'bad',
-      text: `CTL <strong>${dCtl7.toFixed(1)}</strong> en 7 días — pérdida notable de forma. Si no es taper intencionado, sube volumen suave.` };
+    if (recentHardLoad) return { tag: 'REACTIVANDO', cls: 'warn',
+      text: `CTL <strong>${dCtl7.toFixed(1)}</strong> en 7 días, pero ya hay una sesión exigente reciente. El CTL usa 42 días y reacciona despacio: una sesión sube primero el ATL; mantén continuidad antes de llamarlo pérdida de forma.` };
+    return { tag: 'CARGA INSUFICIENTE', cls: 'bad',
+      text: `CTL <strong>${dCtl7.toFixed(1)}</strong> en 7 días — la carga semanal aún no sostiene tu nivel crónico. Si no es un taper intencionado, recupera volumen progresivamente.` };
   })();
 
   const trendAtl = (() => {
@@ -558,6 +584,14 @@ function composeFormStatus() {
         <div class="line"><span class="bullet ok"></span>${trendAtl.text}</div>
         <div class="line"><span class="bullet warn"></span>${trendTsb.text}</div>
       </div>
+      <div class="form-chart-head">
+        <span class="chart-title">Evolución CTL · ATL · TSB</span>
+        <div class="range-bar" id="formRange">
+          <button class="range-btn active" data-days="7">7d</button>
+          <button class="range-btn" data-days="14">14d</button>
+        </div>
+      </div>
+      <div class="form-chart-wrap"><canvas id="formEvolutionChart"></canvas></div>
     </section>
   `;
 }
@@ -634,6 +668,7 @@ function render() {
   `;
 
   drawGauge(tr, trColor);
+  drawFormEvolution(7);
   renderEvolution(EVOL_RANGE_DAYS);
   drawTrendStrip();
   drawTrendStripTSS();
@@ -846,6 +881,42 @@ document.addEventListener('click', e => {
   renderEvolution(EVOL_RANGE_DAYS);
 });
 
+let formEvolutionChart = null;
+function drawFormEvolution(days) {
+  const canvas = document.getElementById('formEvolutionChart');
+  if (!canvas || !FITNESS?.daily?.length) return;
+  const dates = calendarDates(chartEndDate, days);
+  const rows = dates.map(d => FITNESS_BY_DATE[d] || {date:d, ctl:null, atl:null, tsb:null});
+  formEvolutionChart?.destroy();
+  formEvolutionChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: dates,
+      datasets: [
+        {label:'CTL · Fitness', data:rows.map(r=>r.ctl), borderColor:getCss('--accent'), backgroundColor:getCss('--accent'), tension:.25, borderWidth:2.5, pointRadius:2, spanGaps:false},
+        {label:'ATL · Fatiga', data:rows.map(r=>r.atl), borderColor:getCss('--pink'), backgroundColor:getCss('--pink'), tension:.25, borderWidth:2.5, pointRadius:2, spanGaps:false},
+        {label:'TSB · Forma', data:rows.map(r=>r.tsb), borderColor:getCss('--green'), backgroundColor:getCss('--green'), tension:.25, borderWidth:2.5, pointRadius:2, spanGaps:false},
+      ],
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false, interaction:{mode:'index', intersect:false},
+      plugins:{legend:{labels:{color:getCss('--muted'), usePointStyle:true, boxWidth:8}}, tooltip:{callbacks:{title:items=>items[0]?.label || '', label:item=>`${item.dataset.label}: ${item.raw == null ? '—' : Number(item.raw).toFixed(1)}`}}},
+      scales:{
+        x:{ticks:{color:getCss('--muted'), maxRotation:0, callback:(v,i)=>{const d=dates[i]; return (i===0 || i===dates.length-1 || i===Math.floor(dates.length/2)) ? d.slice(5) : '';}}, grid:{display:false}},
+        y:{ticks:{color:getCss('--muted')}, grid:{color:getCss('--border')}, suggestedMin:-10}
+      }
+    }
+  });
+}
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('#formRange .range-btn');
+  if (!btn) return;
+  document.querySelectorAll('#formRange .range-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  drawFormEvolution(Number(btn.dataset.days));
+});
+
 // ── Readiness gauge (semi-circle) ───────────────────────────────────────────
 function drawGauge(score, color) {
   const c = document.getElementById('readinessGauge');
@@ -902,7 +973,7 @@ function drawTrendStrip() {
 }
 
 function drawTrendStripTSS() {
-  const last7Dates = HEALTH.slice(-7).map(r => r.date);
+  const last7Dates = calendarDates(chartEndDate, 7);
   const bars = document.getElementById('trend7TssBars');
   const labels = document.getElementById('trend7TssLabels');
   const stat = document.getElementById('trend7TssStat');

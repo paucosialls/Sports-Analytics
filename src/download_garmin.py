@@ -24,7 +24,7 @@ from tqdm import tqdm
 load_dotenv()
 
 RAW_DIR = Path(__file__).parent.parent / "data" / "raw"
-TOKEN_STORE = Path.home() / ".garth"   # cached OAuth tokens — avoids re-login
+TOKEN_STORE = Path.home() / ".garminconnect"  # current garminconnect token format
 PAGE_SIZE = 100          # Garmin API max per request
 DELAY_BETWEEN_DL = 0.5  # seconds between each activity download
 DELAY_BETWEEN_PAGES = 2.0  # seconds between page fetches
@@ -59,26 +59,17 @@ def connect() -> Garmin:
 
     api = Garmin(email, password)
 
-    # Try resuming a cached session first (avoids SSO rate limits)
-    if TOKEN_STORE.exists():
-        try:
-            log.info("Resuming cached Garmin session from %s …", TOKEN_STORE)
-            api.login(str(TOKEN_STORE))
-            log.info("Session resumed.")
-            return api
-        except Exception:
-            log.info("Cached session expired — doing fresh login.")
-
-    # Fresh login with retry backoff for 429s
-    log.info("Logging in to Garmin Connect as %s …", email)
+    # Current garminconnect loads, refreshes and persists tokens itself when a
+    # token-store path is passed. Older code called api.garth.dump(), an API
+    # which no longer exists and made the dashboard refresh fail after login.
+    TOKEN_STORE.mkdir(parents=True, exist_ok=True)
+    log.info("Connecting to Garmin (token store %s) …", TOKEN_STORE)
     for attempt in range(1, 4):
         try:
-            api.login()
-            TOKEN_STORE.mkdir(parents=True, exist_ok=True)
-            api.garth.dump(str(TOKEN_STORE))
-            log.info("Login successful. Session cached to %s", TOKEN_STORE)
+            api.login(str(TOKEN_STORE))
+            log.info("Garmin session ready.")
             return api
-        except GarthHTTPError as e:
+        except Exception as e:
             if "429" in str(e) and attempt < 3:
                 wait = 30 * attempt
                 log.warning("Rate limited by Garmin SSO (429). Waiting %ds before retry %d/3 …", wait, attempt)
@@ -86,9 +77,6 @@ def connect() -> Garmin:
             else:
                 log.error("Login failed: %s", e)
                 sys.exit(1)
-        except GarminConnectAuthenticationError as e:
-            log.error("Authentication failed: %s", e)
-            sys.exit(1)
 
 
 # ── Activity list ─────────────────────────────────────────────────────────────

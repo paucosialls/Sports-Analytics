@@ -31,7 +31,7 @@ ROOT = Path(__file__).parent.parent
 PROCESSED_DIR = ROOT / "data" / "processed" / "cycling_power"
 SUMMARY_CSV = ROOT / "data" / "processed" / "cycling_activities.csv"
 DASHBOARD_JS = ROOT / "dashboard" / "cycling_activities.js"
-TOKEN_STORE = Path.home() / ".garth"
+TOKEN_STORE = Path.home() / ".garminconnect"
 
 PAGE_SIZE = 100
 DELAY_BETWEEN_DL = 0.8
@@ -88,21 +88,13 @@ def connect() -> Garmin:
         log.error("GARMIN_EMAIL / GARMIN_PASSWORD not set in .env")
         sys.exit(1)
     api = Garmin(email, password)
-    if TOKEN_STORE.exists():
-        try:
-            api.login(str(TOKEN_STORE))
-            log.info("Session resumed from %s", TOKEN_STORE)
-            return api
-        except Exception:
-            log.info("Cached session expired — fresh login.")
+    TOKEN_STORE.mkdir(parents=True, exist_ok=True)
     for attempt in range(1, 4):
         try:
-            api.login()
-            TOKEN_STORE.mkdir(parents=True, exist_ok=True)
-            api.garth.dump(str(TOKEN_STORE))
-            log.info("Login successful.")
+            api.login(str(TOKEN_STORE))
+            log.info("Garmin session ready from %s", TOKEN_STORE)
             return api
-        except GarthHTTPError as e:
+        except Exception as e:
             if "429" in str(e) and attempt < 3:
                 wait = 30 * attempt
                 log.warning("Rate limited (429). Waiting %ds …", wait)
@@ -110,9 +102,6 @@ def connect() -> Garmin:
             else:
                 log.error("Login failed: %s", e)
                 sys.exit(1)
-        except GarminConnectAuthenticationError as e:
-            log.error("Auth failed: %s", e)
-            sys.exit(1)
 
 
 def is_cycling(activity: dict) -> bool:

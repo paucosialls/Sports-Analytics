@@ -23,6 +23,8 @@ fi
 
 source venv/bin/activate
 
+SYNC_FAILED=0
+
 run_step() {
   local name=$1
   shift
@@ -31,6 +33,7 @@ run_step() {
     echo "[ok]  $name" >> "$LOG"
   else
     echo "[err] $name (exit $?)" >> "$LOG"
+    SYNC_FAILED=1
   fi
 }
 
@@ -41,6 +44,15 @@ run_step fetch_health_data   python src/fetch_health_data.py
 run_step parse_gpx           python src/parse_gpx.py
 run_step backfill_cadence    python src/backfill_cadence.py
 run_step fitness_fatigue     python src/fitness_fatigue.py
+
+# Do not publish a partially refreshed dashboard. Previously this script ended
+# successfully even when every Garmin step failed, so the UI claimed that the
+# refresh worked and reloaded the same stale data.
+if [ "$SYNC_FAILED" -ne 0 ]; then
+  echo "sync incomplete — skipping git push" >> "$LOG"
+  echo "failed $(date '+%H:%M:%S')" >> "$LOG"
+  exit 1
+fi
 
 # --- git: commit fresh dashboard data and push to GitHub ---
 echo "--- git_push ---" >> "$LOG"
