@@ -51,6 +51,11 @@
   #refreshBtn .dot.error { background: var(--pink); }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
   #refreshMsg { color: var(--muted); font-size: .78rem; margin-left: 8px; }
+  .stale-banner {
+    background: rgba(247,155,79,.12); border: 1px solid #f79b4f; border-radius: 10px;
+    color: var(--text); padding: 12px 16px; line-height: 1.45;
+  }
+  .stale-banner strong { color: #f79b4f; }
 
   main { padding: 24px 20px; max-width: 920px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
 
@@ -338,6 +343,27 @@ const yest  = HEALTH[HEALTH.length-2] || {};
 const latestFitness = FITNESS?.daily?.length ? FITNESS.daily[FITNESS.daily.length - 1] : null;
 const chartEndDate = [today.date, latestFitness?.date].filter(Boolean).sort().at(-1);
 
+function localIsoDate(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+}
+function calendarDayDifference(laterDate, earlierDate) {
+  const later = new Date(`${laterDate}T12:00:00`);
+  const earlier = new Date(`${earlierDate}T12:00:00`);
+  return Math.round((later - earlier) / 86400000);
+}
+const actualToday = localIsoDate();
+const dataDayDifference = today.date ? calendarDayDifference(actualToday, today.date) : null;
+const healthDataIsCurrent = dataDayDifference === 0;
+
+function staleDataHTML() {
+  if (healthDataIsCurrent) return '';
+  if (!today.date) return `<div class="stale-banner"><strong>Datos no disponibles.</strong> Actualiza Garmin antes de usar la recomendación de Today.</div>`;
+  const timing = dataDayDifference > 0
+    ? `hace ${dataDayDifference} ${dataDayDifference === 1 ? 'día' : 'días'}`
+    : `${Math.abs(dataDayDifference)} ${Math.abs(dataDayDifference) === 1 ? 'día' : 'días'} por delante del reloj del dispositivo`;
+  return `<div class="stale-banner"><strong>Datos desactualizados.</strong> La última jornada disponible es ${today.date} (${timing}); hoy es ${actualToday}. Actualiza Garmin antes de tomar una decisión de entrenamiento.</div>`;
+}
+
 function calendarDates(endDate, days) {
   const end = new Date(`${endDate}T12:00:00`);
   return Array.from({length: days}, (_, i) => {
@@ -392,6 +418,7 @@ const greet = (() => {
 
 function pickVerdict() {
   // Compose a one-line verdict from training readiness + TSB + sleep score.
+  if (!healthDataIsCurrent) return 'La información disponible no corresponde a hoy.';
   if (tr == null) return 'Sin datos suficientes para hoy.';
   let head = '';
   if (tr >= 75) head = 'Estás <strong>recuperado</strong>.';
@@ -415,6 +442,7 @@ function pickVerdict() {
 }
 
 function pickRecommendation() {
+  if (!healthDataIsCurrent) return '<div class="rec-head">No se genera recomendación con datos de otro día.</div><div class="rec-body">Pulsa <strong>Refresh data</strong> y vuelve a comprobarlo cuando termine la sincronización.</div>';
   if (tr == null) return 'Carga la última sincronización del Garmin para ver una recomendación.';
 
   // Pick a recommendation tier from readiness + TSB. The tiers offer a menu
@@ -602,6 +630,7 @@ function render() {
   const trColor = levelColor(trLvl, tr);
 
   root.innerHTML = `
+    ${staleDataHTML()}
     <section class="hero">
       <div class="gauge-wrap">
         <canvas id="readinessGauge"></canvas>
