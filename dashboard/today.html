@@ -93,6 +93,37 @@
   }
   .hero-text .recommend .rec-notes div { margin: 4px 0; }
 
+  .workout-panel {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; display: flex; flex-direction: column; gap: 14px;
+  }
+  .workout-panel .workout-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+  }
+  .workout-panel .title { color: var(--muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .08em; }
+  .workout-panel .name { font-size: 1.25rem; font-weight: 700; margin-top: 4px; }
+  .workout-panel .meta { color: var(--muted); font-size: .82rem; line-height: 1.45; margin-top: 4px; }
+  .workout-panel .badge {
+    border-radius: 6px; border: 1px solid var(--border); padding: 6px 10px;
+    font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  }
+  .workout-panel .badge.hard { color: var(--pink); border-color: rgba(247,79,142,.45); background: rgba(247,79,142,.12); }
+  .workout-panel .badge.build { color: var(--yellow); border-color: rgba(247,201,79,.45); background: rgba(247,201,79,.12); }
+  .workout-panel .badge.easy { color: var(--green); border-color: rgba(79,189,135,.45); background: rgba(79,189,135,.12); }
+  .workout-panel .reason {
+    color: var(--text); font-size: .9rem; line-height: 1.5;
+    border-left: 3px solid var(--accent); padding-left: 12px;
+  }
+  .workout-steps { display: flex; flex-direction: column; gap: 8px; }
+  .workout-step {
+    display: grid; grid-template-columns: 56px 1fr 76px; align-items: center; gap: 10px;
+    background: var(--surface2); border-radius: 8px; padding: 10px 12px;
+  }
+  .workout-step .dur { color: var(--muted); font-size: .82rem; font-variant-numeric: tabular-nums; }
+  .workout-step .label { font-size: .9rem; line-height: 1.35; }
+  .workout-step .target { text-align: right; font-size: .86rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .workout-panel .export-note { color: var(--muted); font-size: .82rem; line-height: 1.45; }
+
   /* Form status section */
   .form-status {
     background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
@@ -522,6 +553,108 @@ function pickRecommendation() {
   `;
 }
 
+
+function workoutStep(min, label, pct, note = '') {
+  return { min, label, pct, note };
+}
+function estimateFtp() {
+  const ftp = FITNESS?.thresholds?.ftp || FITNESS?.thresholds?.eftp;
+  if (ftp) return Math.round(ftp);
+  return 300;
+}
+function stepTarget(step, ftp) {
+  if (Array.isArray(step.pct)) {
+    return `${Math.round(step.pct[0] * 100)}-${Math.round(step.pct[1] * 100)}%`;
+  }
+  return `${Math.round(step.pct * 100)}% / ${Math.round(step.pct * ftp)} W`;
+}
+function buildIndoorWorkout() {
+  const todayTss = (FITNESS_BY_DATE[today.date] || {}).tss || 0;
+  const sleepH = ssH != null ? ssH / 3600 : null;
+  const hrvLow = hrv != null && baseHRV != null && hrv < baseHRV - 5;
+  const poorSleep = sleepH != null && sleepH < 6.5;
+  const heavyToday = todayTss >= 90;
+  const highReadiness = tr != null && tr >= 75;
+  const tired = tr != null && tr < 50;
+  let workout;
+
+  if (heavyToday || tired || poorSleep) {
+    workout = {
+      name: '60 min recovery spin',
+      badge: 'easy',
+      targetTss: 30,
+      goal: 'Absorb load and add easy calorie burn without adding fatigue.',
+      steps: [
+        workoutStep(10, 'Warm-up', [0.45, 0.60]),
+        workoutStep(35, 'Endurance Z2 low', 0.60),
+        workoutStep(5, 'High cadence drills', 0.65, '5 x 30 s quick legs, easy between'),
+        workoutStep(10, 'Cool-down', [0.55, 0.40]),
+      ],
+    };
+  } else if (highReadiness && !hrvLow && (tsbToday == null || tsbToday > -10)) {
+    workout = {
+      name: '60 min over-under builder',
+      badge: 'hard',
+      targetTss: 70,
+      goal: 'Improve threshold fitness with controlled work near FTP.',
+      steps: [
+        workoutStep(12, 'Progressive warm-up', [0.50, 0.75]),
+        workoutStep(6, 'Activation', 1.05, '3 x 1 min hard, 1 min easy'),
+        workoutStep(24, 'Over-under set', 0.92, '3 x 8 min: 2 min 88%, 1 min 102%, repeat'),
+        workoutStep(8, 'Z2 reset', 0.62),
+        workoutStep(10, 'Cool-down', [0.55, 0.40]),
+      ],
+    };
+  } else {
+    workout = {
+      name: '60 min sweet spot aerobic',
+      badge: 'build',
+      targetTss: 55,
+      goal: 'Build fitness and support weight loss with work you can repeat 2-3 times per week.',
+      steps: [
+        workoutStep(12, 'Warm-up', [0.50, 0.75]),
+        workoutStep(15, 'Sweet spot block 1', 0.88),
+        workoutStep(5, 'Recovery', 0.55),
+        workoutStep(15, 'Sweet spot block 2', 0.88),
+        workoutStep(13, 'Cool-down endurance', [0.65, 0.45]),
+      ],
+    };
+  }
+
+  const reasons = [];
+  if (tr != null) reasons.push(`readiness ${tr}`);
+  if (sleepH != null) reasons.push(`sleep ${sleepH.toFixed(1)} h`);
+  if (hrv != null && baseHRV != null) reasons.push(`HRV ${hrv} vs ${Math.round(baseHRV)} ms baseline`);
+  if (tsbToday != null) reasons.push(`TSB ${tsbToday >= 0 ? '+' : ''}${tsbToday.toFixed(0)}`);
+  if (todayTss > 0) reasons.push(`today already has ${Math.round(todayTss)} TSS`);
+  return { ...workout, reasons, ftp: estimateFtp() };
+}
+function indoorWorkoutHTML() {
+  if (!healthDataIsCurrent) return '';
+  const w = buildIndoorWorkout();
+  const minutes = w.steps.reduce((sum, step) => sum + step.min, 0);
+  return `
+    <section class="workout-panel">
+      <div class="workout-head">
+        <div>
+          <div class="title">Indoor trainer today</div>
+          <div class="name">${w.name}</div>
+          <div class="meta">${minutes} min · target ${w.targetTss} TSS · FTP estimate ${w.ftp} W</div>
+        </div>
+        <span class="badge ${w.badge}">${w.badge}</span>
+      </div>
+      <div class="reason"><strong>Why:</strong> ${w.goal}<br>${w.reasons.join(' · ')}</div>
+      <div class="workout-steps">
+        ${w.steps.map(step => `<div class="workout-step">
+          <div class="dur">${step.min} min</div>
+          <div class="label">${step.label}${step.note ? `<br><span style="color:var(--muted)">${step.note}</span>` : ''}</div>
+          <div class="target">${stepTarget(step, w.ftp)}</div>
+        </div>`).join('')}
+      </div>
+      <div class="export-note">Export path: write ZWO and upload the planned workout to Intervals.icu.</div>
+    </section>`;
+}
+
 // ── Form status: explain CTL/ATL/TSB and the recent trend ──────────────────
 function composeFormStatus() {
   if (!FITNESS || !FITNESS.daily || !FITNESS.daily.length) return '';
@@ -645,6 +778,8 @@ function render() {
         <div class="recommend">${pickRecommendation()}</div>
       </div>
     </section>
+
+    ${indoorWorkoutHTML()}
 
     <section class="pillars">
       ${pillarHTML('sleep')}
