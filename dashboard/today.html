@@ -629,30 +629,70 @@ function buildIndoorWorkout() {
   if (todayTss > 0) reasons.push(`today already has ${Math.round(todayTss)} TSS`);
   return { ...workout, reasons, ftp: estimateFtp() };
 }
-function indoorWorkoutHTML() {
-  if (!healthDataIsCurrent) return '';
-  const w = buildIndoorWorkout();
+function buildOutdoorWorkout(indoor) {
+  if (indoor.badge === 'easy') return {
+    name: '90 min easy endurance ride', badge: indoor.badge, targetTss: 45,
+    goal: 'Recover outdoors while keeping the effort smooth and controlled.',
+    steps: [
+      workoutStep(15, 'Easy warm-up', [0.45, 0.58]),
+      workoutStep(65, 'Low endurance', 0.58, 'Flat or gently rolling route; avoid hard climbs'),
+      workoutStep(10, 'Easy ride home', [0.55, 0.40]),
+    ],
+  };
+  if (indoor.badge === 'hard') return {
+    name: '90 min outdoor threshold builder', badge: indoor.badge, targetTss: 90,
+    goal: 'Use the good readiness day for sustained climbing or headwind efforts.',
+    steps: [
+      workoutStep(20, 'Progressive warm-up', [0.45, 0.72]),
+      workoutStep(15, 'Tempo', 0.80),
+      workoutStep(10, 'Threshold effort 1', 0.95, 'Steady climb or uninterrupted road'),
+      workoutStep(10, 'Easy endurance', 0.60),
+      workoutStep(15, 'Tempo', 0.82),
+      workoutStep(10, 'Threshold effort 2', 0.95, 'Controlled, not all-out'),
+      workoutStep(10, 'Cool-down', [0.55, 0.40]),
+    ],
+  };
+  return {
+    name: '90 min aerobic endurance ride', badge: indoor.badge, targetTss: 65,
+    goal: 'Build aerobic fitness outdoors without creating excessive fatigue.',
+    steps: [
+      workoutStep(15, 'Progressive warm-up', [0.45, 0.65]),
+      workoutStep(60, 'Steady endurance', 0.68, 'Keep pressure on the pedals; avoid surges'),
+      workoutStep(5, 'Cadence work', 0.75, '5 x 30 s quick legs, easy between'),
+      workoutStep(10, 'Easy ride home', [0.55, 0.40]),
+    ],
+  };
+}
+function workoutHTML(kind, w) {
   const minutes = w.steps.reduce((sum, step) => sum + step.min, 0);
+  const ftp = w.ftp || estimateFtp();
+  const reasons = w.reasons || [];
   return `
     <section class="workout-panel">
       <div class="workout-head">
         <div>
-          <div class="title">Indoor trainer today</div>
+          <div class="title">${kind} option today</div>
           <div class="name">${w.name}</div>
-          <div class="meta">${minutes} min · target ${w.targetTss} TSS · FTP estimate ${w.ftp} W</div>
+          <div class="meta">${minutes} min · target ${w.targetTss} TSS · FTP estimate ${ftp} W</div>
         </div>
         <span class="badge ${w.badge}">${w.badge}</span>
       </div>
-      <div class="reason"><strong>Why:</strong> ${w.goal}<br>${w.reasons.join(' · ')}</div>
+      <div class="reason"><strong>Why:</strong> ${w.goal}${reasons.length ? `<br>${reasons.join(' · ')}` : ''}</div>
       <div class="workout-steps">
         ${w.steps.map(step => `<div class="workout-step">
           <div class="dur">${step.min} min</div>
           <div class="label">${step.label}${step.note ? `<br><span style="color:var(--muted)">${step.note}</span>` : ''}</div>
-          <div class="target">${stepTarget(step, w.ftp)}</div>
+          <div class="target">${stepTarget(step, ftp)}</div>
         </div>`).join('')}
       </div>
-      <div class="export-note">Export path: write ZWO and upload the planned workout to Intervals.icu.</div>
+      <div class="export-note">Published automatically to Intervals.icu at 07:20.</div>
     </section>`;
+}
+function workoutOptionsHTML() {
+  if (!healthDataIsCurrent) return '';
+  const indoor = buildIndoorWorkout();
+  const outdoor = { ...buildOutdoorWorkout(indoor), reasons: indoor.reasons, ftp: indoor.ftp };
+  return workoutHTML('Indoor', indoor) + workoutHTML('Outdoor', outdoor);
 }
 
 // ── Form status: explain CTL/ATL/TSB and the recent trend ──────────────────
@@ -779,7 +819,7 @@ function render() {
       </div>
     </section>
 
-    ${indoorWorkoutHTML()}
+    ${workoutOptionsHTML()}
 
     <section class="pillars">
       ${pillarHTML('sleep')}

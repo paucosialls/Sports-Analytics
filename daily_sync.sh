@@ -54,6 +54,17 @@ if [ "$SYNC_FAILED" -ne 0 ]; then
   exit 1
 fi
 
+# Build both daily cycling choices from the refreshed readiness data and
+# publish them as stable, upserted Intervals.icu events.
+run_step generate_workouts python src/generate_today_workout.py
+run_step upload_workouts   python src/upload_today_workout_intervals.py
+
+if [ "$SYNC_FAILED" -ne 0 ]; then
+  echo "workout publication incomplete" >> "$LOG"
+  echo "failed $(date '+%H:%M:%S')" >> "$LOG"
+  exit 1
+fi
+
 # --- git: commit fresh dashboard data and push to GitHub ---
 echo "--- git_push ---" >> "$LOG"
 {
@@ -62,7 +73,7 @@ echo "--- git_push ---" >> "$LOG"
           dashboard/fitness.js dashboard/health.js 2>/dev/null
   if ! git diff --cached --quiet; then
     git commit -m "Daily data sync $(date '+%Y-%m-%d')" \
-      && git push
+      && env -u GH_TOKEN -u GITHUB_TOKEN git push
   else
     echo "no data changes — skipping commit"
   fi
