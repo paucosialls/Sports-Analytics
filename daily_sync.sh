@@ -65,7 +65,8 @@ echo "--- git_push ---" >> "$LOG"
           dashboard/fitness.js dashboard/health.js 2>/dev/null
   if ! git diff --cached --quiet; then
     git commit -m "Daily data sync $(date '+%Y-%m-%d')" \
-      && env -u GH_TOKEN -u GITHUB_TOKEN git push
+      && env -u GH_TOKEN -u GITHUB_TOKEN \
+           GH_CONFIG_DIR=/home/nil/pau/.config/gh-pau git push
   else
     echo "no data changes — skipping commit"
   fi
