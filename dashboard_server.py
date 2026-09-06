@@ -116,6 +116,14 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, fmt, *args) -> None:  # noqa: D401
         return
 
+    def end_headers(self) -> None:
+        # Dashboard JS files contain changing Garmin data. Do not let an
+        # installed browser shortcut keep yesterday's health or workout view.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
+        super().end_headers()
+
     def _json(self, code: int, body: dict) -> None:
         payload = json.dumps(body).encode("utf-8")
         self.send_response(code)
