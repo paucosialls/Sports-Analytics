@@ -12,10 +12,13 @@ Run via systemd so it's always available on the tailnet at port 8765.
 from __future__ import annotations
 
 import json
+import hashlib
+import hmac
 import os
 import subprocess
 import threading
 import time
+from datetime import datetime, timedelta
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -24,6 +27,8 @@ DASHBOARD = ROOT / "dashboard"
 SYNC_SH = ROOT / "daily_sync.sh"
 LOG_PATH = ROOT / "logs" / "daily.log"
 PORT = int(os.getenv("PORT", "8765"))
+GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", "8766"))
+SYNC_TIMES = ((7, 20), (10, 20), (13, 20), (16, 20), (19, 20), (22, 20))
 
 # In-memory state shared across threads.
 STATE: dict = {
@@ -53,6 +58,43 @@ def _run_sync() -> None:
         STATE["running"] = False
         STATE["finished_at"] = int(time.time())
         STATE["exit_code"] = rc
+
+
+def _start_sync() -> bool:
+    """Start one sync unless another manual or scheduled run is active."""
+    with STATE_LOCK:
+        if STATE["running"]:
+            return False
+        STATE["running"] = True
+        STATE["started_at"] = int(time.time())
+        STATE["finished_at"] = 0
+        STATE["exit_code"] = None
+    threading.Thread(target=_run_sync, daemon=True).start()
+    return True
+
+
+def _seconds_until_next_sync(now: datetime | None = None) -> float:
+    """Return seconds until the next fixed local-time refresh slot."""
+    current = now or datetime.now()
+    for hour, minute in SYNC_TIMES:
+        candidate = current.replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+        if candidate > current:
+            return (candidate - current).total_seconds()
+    tomorrow = current + timedelta(days=1)
+    first_hour, first_minute = SYNC_TIMES[0]
+    candidate = tomorrow.replace(
+        hour=first_hour, minute=first_minute, second=0, microsecond=0
+    )
+    return (candidate - current).total_seconds()
+
+
+def _scheduled_sync_loop() -> None:
+    """Run at fixed daytime slots; manual refreshes share the same lock."""
+    while True:
+        time.sleep(_seconds_until_next_sync())
+        _start_sync()
 
 
 def _tail(path: Path, max_bytes: int = 4_000) -> str:
@@ -97,23 +139,71 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:  # noqa: N802
         if self.path.rstrip("/") == "/refresh":
-            with STATE_LOCK:
-                if STATE["running"]:
-                    self._json(409, {"error": "already running", **STATE})
-                    return
-                STATE["running"] = True
-                STATE["started_at"] = int(time.time())
-                STATE["finished_at"] = 0
-                STATE["exit_code"] = None
-            threading.Thread(target=_run_sync, daemon=True).start()
+            if not _start_sync():
+                self._json(409, {"error": "already running", **STATE})
+                return
             self._json(202, self._state_snapshot())
             return
         self.send_error(405, "Method not allowed")
 
 
+def _gateway_token() -> str:
+    """Derive a dedicated gateway secret without exporting the GitHub token."""
+    env_path = ROOT / ".env"
+    if not env_path.exists():
+        return ""
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        if raw_line.startswith("GH_TOKEN="):
+            github_token = raw_line.split("=", 1)[1].strip().strip("'\"")
+            return hashlib.sha256(
+                ("sports-refresh-gateway-v1:" + github_token).encode("utf-8")
+            ).hexdigest()
+    return ""
+
+
+class GatewayHandler(Handler):
+    """Token-protected refresh API exposed through Tailscale Funnel."""
+
+    def _authorized(self) -> bool:
+        expected = _gateway_token()
+        supplied = self.headers.get("Authorization", "")
+        return bool(expected) and hmac.compare_digest(supplied, f"Bearer {expected}")
+
+    def _reject_unless_authorized(self) -> bool:
+        if self._authorized():
+            return False
+        self._json(401, {"error": "unauthorized"})
+        return True
+
+    def _state_snapshot(self) -> dict:
+        # Do not expose the local sync log on the public gateway.
+        with STATE_LOCK:
+            return dict(STATE)
+
+    def do_GET(self) -> None:  # noqa: N802
+        if self._reject_unless_authorized():
+            return
+        if self.path.rstrip("/") in ("/refresh/status", "/refresh-status"):
+            self._json(200, self._state_snapshot())
+            return
+        self._json(404, {"error": "not found"})
+
+    def do_POST(self) -> None:  # noqa: N802
+        if self._reject_unless_authorized():
+            return
+        super().do_POST()
+
+
 def main() -> None:
-    httpd = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
-    print(f"sports-dashboard server on http://0.0.0.0:{PORT}  (root={DASHBOARD})")
+    gateway = ThreadingHTTPServer(("127.0.0.1", GATEWAY_PORT), GatewayHandler)
+    threading.Thread(target=gateway.serve_forever, daemon=True).start()
+    threading.Thread(target=_scheduled_sync_loop, daemon=True).start()
+    httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    print(
+        f"sports-dashboard server on http://127.0.0.1:{PORT}; "
+        f"refresh gateway on http://127.0.0.1:{GATEWAY_PORT}; "
+        "automatic sync at 07:20, 10:20, 13:20, 16:20, 19:20 and 22:20"
+    )
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
