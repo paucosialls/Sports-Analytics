@@ -46,10 +46,9 @@ if [ "$SYNC_FAILED" -ne 0 ]; then
   exit 1
 fi
 
-# Build both daily cycling choices from the refreshed readiness data and
-# publish them as stable, upserted Intervals.icu events.
-run_step generate_workouts python src/generate_today_workout.py
-run_step upload_workouts   python src/upload_today_workout_intervals.py
+# Publish both cycling choices only after Garmin has supplied today's sleep,
+# HRV and Training Readiness data. A dated marker prevents repeat publication.
+run_step publish_workouts_after_wake python src/publish_today_workouts.py
 
 if [ "$SYNC_FAILED" -ne 0 ]; then
   echo "workout publication incomplete" >> "$LOG"
