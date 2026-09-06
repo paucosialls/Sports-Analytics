@@ -28,6 +28,7 @@ SYNC_SH = ROOT / "daily_sync.sh"
 LOG_PATH = ROOT / "logs" / "daily.log"
 PORT = int(os.getenv("PORT", "8765"))
 GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", "8766"))
+ENABLE_SCHEDULED_SYNC = os.getenv("ENABLE_SCHEDULED_SYNC", "1") != "0"
 SYNC_TIMES = ((7, 20), (10, 20), (13, 20), (16, 20), (19, 20), (22, 20))
 
 # In-memory state shared across threads.
@@ -205,7 +206,8 @@ class GatewayHandler(Handler):
 def main() -> None:
     gateway = ThreadingHTTPServer(("127.0.0.1", GATEWAY_PORT), GatewayHandler)
     threading.Thread(target=gateway.serve_forever, daemon=True).start()
-    threading.Thread(target=_scheduled_sync_loop, daemon=True).start()
+    if ENABLE_SCHEDULED_SYNC:
+        threading.Thread(target=_scheduled_sync_loop, daemon=True).start()
     httpd = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     print(
         f"sports-dashboard server on http://127.0.0.1:{PORT}; "
