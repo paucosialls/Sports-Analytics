@@ -10,6 +10,15 @@ LOG_DIR=logs
 mkdir -p "$LOG_DIR"
 LOG="$LOG_DIR/daily.log"
 
+# More than one dashboard instance can request the same scheduled refresh.
+# Keep the shared pipeline single-run so they cannot rewrite data concurrently.
+exec 9>"$LOG_DIR/daily.lock"
+if ! flock -n 9; then
+  echo "======== $(date '+%Y-%m-%d %H:%M:%S %Z') ========" >> "$LOG"
+  echo "sync already running — skipping duplicate request" >> "$LOG"
+  exit 0
+fi
+
 echo "" >> "$LOG"
 echo "======== $(date '+%Y-%m-%d %H:%M:%S %Z') ========" >> "$LOG"
 

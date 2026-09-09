@@ -29,7 +29,9 @@ LOG_PATH = ROOT / "logs" / "daily.log"
 PORT = int(os.getenv("PORT", "8765"))
 GATEWAY_PORT = int(os.getenv("GATEWAY_PORT", "8766"))
 ENABLE_SCHEDULED_SYNC = os.getenv("ENABLE_SCHEDULED_SYNC", "1") != "0"
-SYNC_TIMES = ((7, 20), (10, 20), (13, 20), (16, 20), (19, 20), (22, 20))
+# Retry hourly during the day. Garmin can publish post-sleep metrics after the
+# first morning sync, and Today must update without a manual refresh.
+SYNC_TIMES = tuple((hour, 20) for hour in range(7, 23))
 
 # In-memory state shared across threads.
 STATE: dict = {
@@ -212,7 +214,7 @@ def main() -> None:
     print(
         f"sports-dashboard server on http://127.0.0.1:{PORT}; "
         f"refresh gateway on http://127.0.0.1:{GATEWAY_PORT}; "
-        "automatic sync at 07:20, 10:20, 13:20, 16:20, 19:20 and 22:20"
+        "automatic sync hourly from 07:20 through 22:20"
     )
     try:
         httpd.serve_forever()
